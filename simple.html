@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Plain - 인사담당자를 위한 이야기와 라운지</title>
+  
+  <!-- Pretendard 폰트 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css" />
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      line-height: 1.6;
+      color: #1a202c;
+      background-color: #ffffff;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+    
+    /* 헤더 */
+    .header {
+      background: white;
+      border-bottom: 1px solid #e5e7eb;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      padding: 12px 0;
+    }
+    
+    .nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .logo {
+      display: flex;
+      align-items: center;
+      text-decoration: none;
+    }
+    
+    .logo img {
+      height: 32px;
+      width: auto;
+    }
+    
+    .nav-links {
+      display: flex;
+      gap: 8px;
+    }
+    
+    .nav-link {
+      padding: 8px 16px;
+      color: #374151;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: 500;
+      transition: background 0.2s;
+    }
+    
+    .nav-link:hover {
+      background: #f3f4f6;
+    }
+    
+    /* 히어로 섹션 */
+    .hero {
+      background: #f9fafb;
+      padding: 80px 0 100px;
+      text-align: center;
+    }
+    
+    .hero h1 {
+      font-size: 48px;
+      font-weight: 700;
+      color: #111827;
+      line-height: 1.2;
+      margin-bottom: 16px;
+    }
+    
+    .hero .brand-text {
+      color: #7A5AF8;
+    }
+    
+    .hero p {
+      font-size: 20px;
+      color: #6b7280;
+      max-width: 600px;
+      margin: 0 auto 40px;
+      line-height: 1.6;
+    }
+    
+    .hero-buttons {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    
+    .btn {
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-weight: 500;
+      text-decoration: none;
+      transition: all 0.2s;
+      border: 1px solid transparent;
+    }
+    
+    .btn-primary {
+      background: #7A5AF8;
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      background: #6d48f7;
+    }
+    
+    .btn-outline {
+      border-color: #e5e7eb;
+      color: #374151;
+    }
+    
+    .btn-outline:hover {
+      background: #f3f4f6;
+    }
+    
+    /* 섹션 */
+    .section {
+      padding: 64px 0;
+    }
+    
+    .section-header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+    
+    .section h2 {
+      font-size: 32px;
+      font-weight: 700;
+      color: #111827;
+      margin-bottom: 8px;
+    }
+    
+    .section p {
+      color: #6b7280;
+      font-size: 18px;
+    }
+    
+    .section-alt {
+      background: #f9fafb;
+    }
+    
+    /* 카드 그리드 */
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+      gap: 24px;
+      margin-top: 40px;
+    }
+    
+    .card {
+      background: white;
+      border-radius: 12px;
+      border: 1px solid #e5e7eb;
+      overflow: hidden;
+      transition: all 0.2s;
+      text-decoration: none;
+      color: inherit;
+    }
+    
+    .card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    
+    .card-image {
+      width: 100%;
+      height: 200px;
+      object-fit: cover;
+    }
+    
+    .card-content {
+      padding: 20px;
+    }
+    
+    .card-badges {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    
+    .badge {
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    
+    .badge-story {
+      background: #f0f9ff;
+      color: #0369a1;
+    }
+    
+    .badge-excellent {
+      background: #fefce8;
+      color: #a16207;
+    }
+    
+    .card h3 {
+      font-size: 18px;
+      font-weight: 600;
+      line-height: 1.4;
+      margin-bottom: 8px;
+      color: #111827;
+    }
+    
+    .card-summary {
+      font-size: 14px;
+      color: #6b7280;
+      line-height: 1.5;
+      margin-bottom: 16px;
+    }
+    
+    .card-tags {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    
+    .tag {
+      padding: 4px 8px;
+      background: #f3f4f6;
+      color: #374151;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    
+    .card-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      color: #9ca3af;
+    }
+    
+    /* 푸터 */
+    .footer {
+      background: #f9fafb;
+      padding: 32px 0;
+      text-align: center;
+    }
+    
+    .footer p {
+      color: #6b7280;
+      font-size: 14px;
+    }
+    
+    /* 반응형 */
+    @media (max-width: 768px) {
+      .hero h1 {
+        font-size: 32px;
+      }
+      
+      .hero p {
+        font-size: 16px;
+      }
+      
+      .hero-buttons {
+        flex-direction: column;
+        align-items: center;
+      }
+      
+      .nav-links {
+        display: none;
+      }
+      
+      .card-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- 헤더 -->
+  <header class="header">
+    <div class="container">
+      <nav class="nav">
+        <a href="#" class="logo">
+          <img src="app/javascript/logo/plain.png" alt="Plain" />
+        </a>
+        <div class="nav-links">
+          <a href="#story" class="nav-link">Story</a>
+          <a href="#lounge" class="nav-link">Lounge</a>
+        </div>
+      </nav>
+    </div>
+  </header>
+
+  <!-- 히어로 섹션 -->
+  <section class="hero">
+    <div class="container">
+      <h1>
+        인사담당자를 위한<br>
+        <span class="brand-text">이야기와 라운지</span>
+      </h1>
+      <p>
+        전문가가 엄선한 인사 관련 콘텐츠와<br>
+        동료들과 함께하는 실무 경험 공유
+      </p>
+      <div class="hero-buttons">
+        <a href="#story" class="btn btn-primary">Story 둘러보기</a>
+        <a href="#lounge" class="btn btn-outline">Lounge 참여하기</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- 최신 Story -->
+  <section class="section" id="story">
+    <div class="container">
+      <div class="section-header">
+        <h2>최신 Story</h2>
+        <p>전문가가 엄선하고 검수한 인사 관련 콘텐츠</p>
+      </div>
+      
+      <div class="card-grid">
+        <a href="#" class="card">
+          <img src="https://images.unsplash.com/photo-1552664730-d307ca884978?w=800&h=400&fit=crop" 
+               alt="신입사원 온보딩" class="card-image">
+          <div class="card-content">
+            <div class="card-badges">
+              <span class="badge badge-story">Story</span>
+            </div>
+            <h3>신입사원 온보딩 프로세스</h3>
+            <p class="card-summary">효과적인 온보딩 프로세스로 신입사원의 조기 정착을 돕고, 생산성을 빠르게 향상시키는 방법을 소개합니다.</p>
+            <div class="card-tags">
+              <span class="tag">온보딩</span>
+              <span class="tag">신입사원</span>
+              <span class="tag">HR프로세스</span>
+            </div>
+            <div class="card-meta">
+              <span>2024.01.15</span>
+              <span>5분 읽기</span>
+            </div>
+          </div>
+        </a>
+
+        <a href="#" class="card">
+          <img src="https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=800&h=400&fit=crop" 
+               alt="원격근무 성과평가" class="card-image">
+          <div class="card-content">
+            <div class="card-badges">
+              <span class="badge badge-story">Story</span>
+            </div>
+            <h3>원격근무 시대, 변화하는 성과평가 기준</h3>
+            <p class="card-summary">디지털 전환과 함께 변화하는 업무 환경에서 공정하고 효과적인 성과평가 시스템을 구축하는 방법을 알아봅시다.</p>
+            <div class="card-tags">
+              <span class="tag">성과평가</span>
+              <span class="tag">원격근무</span>
+              <span class="tag">HR시스템</span>
+            </div>
+            <div class="card-meta">
+              <span>2024.01.12</span>
+              <span>7분 읽기</span>
+            </div>
+          </div>
+        </a>
+
+        <a href="#" class="card">
+          <img src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=800&h=400&fit=crop" 
+               alt="MZ세대 직원" class="card-image">
+          <div class="card-content">
+            <div class="card-badges">
+              <span class="badge badge-story">Story</span>
+            </div>
+            <h3>MZ세대 직원들의 진짜 니즈는 무엇일까?</h3>
+            <p class="card-summary">설문조사와 인터뷰를 통해 알아본 MZ세대 직원들의 실제 니즈와 이를 반영한 HR 정책 제안을 공유합니다.</p>
+            <div class="card-tags">
+              <span class="tag">MZ세대</span>
+              <span class="tag">직원만족</span>
+              <span class="tag">조직문화</span>
+            </div>
+            <div class="card-meta">
+              <span>2024.01.10</span>
+              <span>6분 읽기</span>
+            </div>
+          </div>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Hot Lounge -->
+  <section class="section section-alt" id="lounge">
+    <div class="container">
+      <div class="section-header">
+        <h2>Hot Lounge</h2>
+        <p>인사담당자들의 생생한 경험과 노하우</p>
+      </div>
+      
+      <div class="card-grid">
+        <a href="#" class="card">
+          <div class="card-content">
+            <div class="card-badges">
+              <span class="badge badge-excellent">우수</span>
+            </div>
+            <h3>원격근무 도입 후 직원 만족도가 90% 이상 나왔어요!</h3>
+            <p class="card-summary">중소기업에서 원격근무 도입 후 직원 만족도 90% 달성한 성공 사례와 노하우를 공유합니다.</p>
+            <div class="card-tags">
+              <span class="tag">원격근무</span>
+              <span class="tag">하이브리드</span>
+              <span class="tag">직원만족</span>
+            </div>
+            <div class="card-meta">
+              <span>2024.01.13</span>
+              <span>좋아요 67 · 댓글 23</span>
+            </div>
+          </div>
+        </a>
+
+        <a href="#" class="card">
+          <div class="card-content">
+            <div class="card-badges">
+              <span class="badge badge-excellent">우수</span>
+            </div>
+            <h3>면접 노쇼 방지하는 나만의 꿀팁 공유합니다</h3>
+            <p class="card-summary">면접 노쇼율을 30%에서 5%로 줄인 구체적인 방법과 실전 꿀팁을 상세히 공유합니다.</p>
+            <div class="card-tags">
+              <span class="tag">채용</span>
+              <span class="tag">면접</span>
+              <span class="tag">노쇼방지</span>
+            </div>
+            <div class="card-meta">
+              <span>2024.01.12</span>
+              <span>좋아요 89 · 댓글 31</span>
+            </div>
+          </div>
+        </a>
+
+        <a href="#" class="card">
+          <div class="card-content">
+            <div class="card-badges">
+              <span class="badge badge-excellent">우수</span>
+            </div>
+            <h3>사내 소통 개선을 위한 작은 변화들 - 3개월 후기</h3>
+            <p class="card-summary">사내 소통 개선을 위한 4가지 작은 변화를 3개월간 시도한 후기와 구체적인 성과를 공유합니다.</p>
+            <div class="card-tags">
+              <span class="tag">사내소통</span>
+              <span class="tag">조직문화</span>
+              <span class="tag">소통개선</span>
+            </div>
+            <div class="card-meta">
+              <span>2024.01.08</span>
+              <span>좋아요 76 · 댓글 29</span>
+            </div>
+          </div>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- 푸터 -->
+  <footer class="footer">
+    <div class="container">
+      <p>© 2024 Plain. All rights reserved.</p>
+    </div>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>원격근무 도입 후 직원 만족도가 90% 이상 나왔어요! - Plain</title>
+  
+  <!-- Pretendard 폰트 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css" />
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      line-height: 1.6;
+      color: #1a202c;
+      background-color: #ffffff;
+    }
+    
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+    
+    /* 헤더 */
+    .header {
+      background: white;
+      border-bottom: 1px solid #e5e7eb;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      padding: 12px 0;
+    }
+    
+    .nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+    
+    .logo {
+      display: flex;
+      align-items: center;
+      text-decoration: none;
+    }
+    
+    .logo img {
+      height: 32px;
+      width: auto;
+    }
+    
+    .nav-links {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    
+    .nav-link {
+      padding: 8px 16px;
+      color: #374151;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: 500;
+      transition: background 0.2s;
+    }
+    
+    .nav-link:hover {
+      background: #f3f4f6;
+    }
+    
+    .login-btn {
+      background: #7A5AF8;
+      color: white;
+      margin-left: 8px;
+    }
+    
+    .login-btn:hover {
+      background: #6d48f7;
+    }
+    
+    /* 메인 콘텐츠 */
+    .main-content {
+      padding: 40px 0 80px;
+    }
+    
+    .breadcrumb {
+      margin-bottom: 32px;
+      font-size: 14px;
+      color: #6b7280;
+    }
+    
+    .breadcrumb a {
+      color: #7A5AF8;
+      text-decoration: none;
+    }
+    
+    .breadcrumb a:hover {
+      text-decoration: underline;
+    }
+    
+    /* 글 헤더 */
+    .post-header {
+      margin-bottom: 40px;
+    }
+    
+    .post-badges {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    
+    .type-badge {
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    
+    .type-experience {
+      background: #d1fae5;
+      color: #065f46;
+    }
+    
+    .type-question {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+    
+    .type-help {
+      background: #e0e7ff;
+      color: #5b21b6;
+    }
+    
+    .excellent-badge {
+      background: #fef3c7;
+      color: #92400e;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    
+    .admin-hint {
+      background: #dbeafe;
+      border: 1px solid #93c5fd;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin: 16px 0;
+      font-size: 14px;
+      color: #1e40af;
+    }
+    
+    .admin-hint .hint-label {
+      font-weight: 600;
+      margin-right: 8px;
+    }
+    
+    .post-title {
+      font-size: 32px;
+      font-weight: 700;
+      line-height: 1.3;
+      color: #111827;
+      margin-bottom: 20px;
+    }
+    
+    .post-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+    }
+    
+    .post-author {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    .author-avatar {
+      width: 40px;
+      height: 40px;
+      background: #7A5AF8;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 600;
+      font-size: 16px;
+    }
+    
+    .author-info {
+      font-size: 14px;
+    }
+    
+    .author-name {
+      font-weight: 600;
+      color: #111827;
+      margin-bottom: 2px;
+    }
+    
+    .author-date {
+      color: #6b7280;
+    }
+    
+    .post-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    .action-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 12px;
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      color: #374151;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .action-btn:hover {
+      background: #f9fafb;
+      border-color: #d1d5db;
+    }
+    
+    .action-btn.liked {
+      background: #fef2f2;
+      border-color: #fecaca;
+      color: #dc2626;
+    }
+    
+    .action-btn.bookmarked {
+      background: #fffbeb;
+      border-color: #fed7aa;
+      color: #d97706;
+    }
+    
+    .post-tags {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 32px;
+    }
+    
+    .tag {
+      padding: 6px 12px;
+      background: #f3f4f6;
+      color: #374151;
+      border-radius: 6px;
+      font-size: 13px;
+      text-decoration: none;
+      transition: background 0.2s;
+    }
+    
+    .tag:hover {
+      background: #e5e7eb;
+      text-decoration: none;
+      color: #374151;
+    }
+    
+    /* 글 내용 */
+    .post-content {
+      font-size: 16px;
+      line-height: 1.8;
+      color: #374151;
+      margin-bottom: 60px;
+    }
+    
+    .post-content h2 {
+      font-size: 24px;
+      font-weight: 600;
+      color: #111827;
+      margin: 32px 0 16px 0;
+    }
+    
+    .post-content h3 {
+      font-size: 20px;
+      font-weight: 600;
+      color: #111827;
+      margin: 24px 0 12px 0;
+    }
+    
+    .post-content h4 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #111827;
+      margin: 20px 0 8px 0;
+    }
+    
+    .post-content p {
+      margin-bottom: 16px;
+    }
+    
+    .post-content ul,
+    .post-content ol {
+      margin: 16px 0 16px 24px;
+    }
+    
+    .post-content li {
+      margin-bottom: 6px;
+    }
+    
+    .post-content strong {
+      font-weight: 600;
+      color: #111827;
+    }
+    
+    .post-content em {
+      font-style: italic;
+    }
+    
+    /* 댓글 섹션 */
+    .comments-section {
+      margin-bottom: 60px;
+      border-top: 1px solid #e5e7eb;
+      padding-top: 40px;
+    }
+    
+    .comments-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+    }
+    
+    .comments-title {
+      font-size: 20px;
+      font-weight: 600;
+      color: #111827;
+    }
+    
+    .comments-hint {
+      font-size: 13px;
+      color: #6b7280;
+    }
+    
+    .comment-form {
+      background: #f9fafb;
+      padding: 20px;
+      border-radius: 12px;
+      margin-bottom: 32px;
+    }
+    
+    .comment-textarea {
+      width: 100%;
+      min-height: 120px;
+      padding: 16px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 14px;
+      line-height: 1.5;
+      resize: vertical;
+      margin-bottom: 12px;
+    }
+    
+    .comment-textarea:focus {
+      outline: none;
+      border-color: #7A5AF8;
+      box-shadow: 0 0 0 3px rgba(122, 90, 248, 0.1);
+    }
+    
+    .comment-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    
+    .comment-btn {
+      padding: 8px 16px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      background: white;
+      color: #374151;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .comment-btn:hover {
+      background: #f3f4f6;
+    }
+    
+    .comment-btn.primary {
+      background: #7A5AF8;
+      border-color: #7A5AF8;
+      color: white;
+    }
+    
+    .comment-btn.primary:hover {
+      background: #6d48f7;
+    }
+    
+    .comment-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .comment {
+      padding: 20px 0;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    
+    .comment:last-child {
+      border-bottom: none;
+    }
+    
+    .comment-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+    
+    .comment-avatar {
+      width: 36px;
+      height: 36px;
+      background: #10b981;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    
+    .comment-author {
+      font-weight: 500;
+      color: #111827;
+    }
+    
+    .comment-date {
+      color: #6b7280;
+      font-size: 13px;
+    }
+    
+    .comment-content {
+      padding-left: 48px;
+      line-height: 1.6;
+      color: #374151;
+    }
+    
+    /* 푸터 */
+    .footer {
+      background: #f9fafb;
+      padding: 32px 0;
+      text-align: center;
+      border-top: 1px solid #e5e7eb;
+    }
+    
+    .footer p {
+      color: #6b7280;
+      font-size: 14px;
+    }
+
+    /* 다크 모드 토글 */
+    .theme-toggle {
+      background: none;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      padding: 6px 10px;
+      color: #374151;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 16px;
+      margin-right: 8px;
+    }
+
+    .theme-toggle:hover {
+      background: #f3f4f6;
+    }
+
+    /* 다크 모드 스타일 */
+    [data-theme="dark"] {
+      --bg-color: #1f2937;
+      --text-color: #f9fafb;
+      --border-color: #374151;
+      --card-bg: #374151;
+      --secondary-bg: #111827;
+      --muted-text: #9ca3af;
+    }
+
+    [data-theme="light"] {
+      --bg-color: #ffffff;
+      --text-color: #1a202c;
+      --border-color: #e5e7eb;
+      --card-bg: #ffffff;
+      --secondary-bg: #f9fafb;
+      --muted-text: #6b7280;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      transition: background-color 0.3s, color 0.3s;
+    }
+
+    .header {
+      background: var(--bg-color);
+    }
+
+    [data-theme="dark"] .theme-toggle {
+      border-color: #4b5563;
+      color: #f9fafb;
+    }
+
+    [data-theme="dark"] .theme-toggle:hover {
+      background: #4b5563;
+    }
+
+    /* 다크 모드 카드 스타일 */
+    [data-theme="dark"] .comment-form {
+      background: var(--secondary-bg);
+      border: 1px solid var(--border-color);
+    }
+
+    [data-theme="dark"] .comment-textarea {
+      background: var(--card-bg);
+      border-color: var(--border-color);
+      color: var(--text-color);
+    }
+
+    [data-theme="dark"] .comment-btn {
+      background: var(--card-bg);
+      border-color: var(--border-color);
+      color: var(--text-color);
+    }
+
+    [data-theme="dark"] .comment-btn:hover {
+      background: var(--secondary-bg);
+    }
+
+    [data-theme="dark"] .action-btn {
+      background: var(--card-bg);
+      border-color: var(--border-color);
+      color: var(--text-color);
+    }
+
+    [data-theme="dark"] .action-btn:hover {
+      background: var(--secondary-bg);
+    }
+
+    [data-theme="dark"] .tag {
+      background: var(--card-bg);
+      color: var(--text-color);
+    }
+
+    [data-theme="dark"] .type-badge.type-experience {
+      background: #064e3b;
+      color: #10b981;
+    }
+
+    [data-theme="dark"] .excellent-badge {
+      background: #92400e;
+      color: #fbbf24;
+    }
+
+    [data-theme="dark"] .admin-hint {
+      background: #1e3a8a;
+      border-color: #3b82f6;
+      color: #93c5fd;
+    }
+
+    [data-theme="dark"] .footer {
+      background: var(--secondary-bg);
+      border-top-color: var(--border-color);
+    }
+
+    /* 다크모드 최적화 - 모든 색상이 제대로 바뀌도록 !important 추가 */
+    [data-theme="dark"] .nav-link {
+      color: #f9fafb !important;
+    }
+
+    [data-theme="dark"] .nav-link:hover {
+      background: #374151 !important;
+    }
+
+    /* 각 페이지별 특수 요소들 */
+    .post-title, .lounge-title, .page-title {
+      color: var(--text-color) !important;
+    }
+
+    .post-summary, .post-meta, .lounge-meta {
+      color: var(--muted-text) !important;
+    }
+
+    .tag {
+      background: var(--secondary-bg) !important;
+      color: var(--muted-text) !important;
+    }
+
+    /* 배지들은 다크모드에서도 원래 색상 유지 */
+    .type-question {
+      background: #dbeafe !important;
+      color: #1e40af !important;
+    }
+
+    .type-experience {
+      background: #d1fae5 !important;
+      color: #065f46 !important;
+    }
+
+    .type-help {
+      background: #e0e7ff !important;
+      color: #5b21b6 !important;
+    }
+
+    .excellent-badge {
+      background: #fef3c7 !important;
+      color: #92400e !important;
+    }
+
+    /* 다크모드에서 배지들 색상 조정 - 더 진한 배경, 밝은 글씨 */
+    [data-theme="dark"] .type-question {
+      background: #1e3a8a !important;
+      color: #93c5fd !important;
+    }
+
+    [data-theme="dark"] .type-experience {
+      background: #14532d !important;
+      color: #86efac !important;
+    }
+
+    [data-theme="dark"] .type-help {
+      background: #4c1d95 !important;
+      color: #c4b5fd !important;
+    }
+
+    [data-theme="dark"] .excellent-badge {
+      background: #92400e !important;
+      color: #fcd34d !important;
+    }
+
+    /* 카드와 컨테이너 */
+    .post-item {
+      background: var(--card-bg) !important;
+      border: 1px solid var(--border-color) !important;
+    }
+
+    /* 폼 요소들 */
+    .comment-textarea {
+      background: var(--card-bg) !important;
+      color: var(--text-color) !important;
+      border: 1px solid var(--border-color) !important;
+    }
+
+    .comment-form {
+      background: var(--card-bg) !important;
+      border: 1px solid var(--border-color) !important;
+    }
+    
+    /* 반응형 */
+    @media (max-width: 768px) {
+      .post-title {
+        font-size: 24px;
+      }
+      
+      .post-meta {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 16px;
+      }
+      
+      .post-content {
+        font-size: 15px;
+      }
+      
+      .nav-links .nav-link:not(.login-btn) {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- 헤더 -->
+  <header class="header">
+    <div class="nav">
+      <a href="new_home.html" class="logo">
+        <img src="app/javascript/logo/plain.png" alt="Plain" />
+      </a>
+      <div class="nav-links">
+        <a href="stories.html" class="nav-link">Story</a>
+        <a href="lounge.html" class="nav-link">Lounge</a>
+        <button class="theme-toggle" onclick="toggleTheme()" id="themeToggle">🌚</button>
+        <a href="#" class="nav-link login-btn">로그인</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- 메인 콘텐츠 -->
+  <main class="main-content">
+    <div class="container">
+      <!-- 브레드크럼 -->
+      <nav class="breadcrumb">
+        <a href="new_home.html">홈</a> > <a href="lounge.html">Lounge</a> > 원격근무 도입 후 직원 만족도가 90% 이상 나왔어요!
+      </nav>
+
+      <!-- 글 헤더 -->
+      <header class="post-header">
+        <div class="post-badges">
+          <span class="type-badge type-experience">이런 일이 있었어요</span>
+          <span class="excellent-badge">우수</span>
+        </div>
+        
+        <div class="admin-hint">
+          <span class="hint-label">우수 글 알림:</span>
+          이 글은 좋아요 50개 이상을 받아 우수 글로 선정되었습니다. Story 승격 후보입니다.
+        </div>
+        
+        <h1 class="post-title">원격근무 도입 후 직원 만족도가 90% 이상 나왔어요!</h1>
+        
+        <div class="post-meta">
+          <div class="post-author">
+            <div class="author-avatar">원</div>
+            <div class="author-info">
+              <div class="author-name">원격근무성공담</div>
+              <div class="author-date">2024.01.13 15:20</div>
+            </div>
+          </div>
+          
+          <div class="post-actions">
+            <button class="action-btn" onclick="toggleLike()">
+              <span id="like-icon">👍</span>
+              <span id="like-count">67</span>
+            </button>
+            <button class="action-btn" onclick="toggleBookmark()">
+              <span id="bookmark-icon">🔖</span>
+            </button>
+          </div>
+        </div>
+        
+        <div class="post-tags">
+          <a href="#" class="tag">원격근무</a>
+          <a href="#" class="tag">하이브리드</a>
+          <a href="#" class="tag">직원만족</a>
+          <a href="#" class="tag">성과관리</a>
+        </div>
+      </header>
+
+      <!-- 글 내용 -->
+      <article class="post-content">
+        <p>작년 초에 원격근무를 도입한 중소기업 HR 담당자입니다.</p>
+        
+        <p>코로나 시기에 어쩔 수 없이 시작한 원격근무였지만, 1년이 지난 지금 정말 만족스러운 결과를 얻었습니다.</p>
+
+        <h2>도입 과정</h2>
+        <ul>
+          <li>3개월간 시범 운영 → 직원 설문조사 → 정식 도입</li>
+          <li>주 2-3일 원격, 나머지는 사무실 근무하는 하이브리드 형태</li>
+          <li>원격근무 가이드라인과 소통 룰 명문화</li>
+        </ul>
+
+        <h2>긍정적인 변화들</h2>
+        
+        <h3>1. <strong>직원 만족도 급상승</strong>: 작년 대비 30% 증가</h3>
+        <h3>2. <strong>이직률 감소</strong>: 20% → 8%로 크게 개선</h3>
+        <h3>3. <strong>생산성 향상</strong>: 프로젝트 완료 속도 15% 개선</h3>
+        <h3>4. <strong>사무실 운영비 절약</strong>: 월 300만원 절약 효과</h3>
+
+        <h2>어려웠던 점과 해결책</h2>
+        <ul>
+          <li><strong>소통 문제</strong>: 주 2회 필수 화상회의, 비공식적 온라인 모임 정기화</li>
+          <li><strong>성과 관리</strong>: 기존 근태 중심 → 목표 달성도 중심으로 전환</li>
+          <li><strong>신입사원 적응</strong>: 첫 6개월은 사무실 위주 근무 원칙</li>
+        </ul>
+
+        <p>직원들이 "회사가 신뢰해주는 느낌"이라고 많이 표현하더라고요.</p>
+
+        <p>원격근무 도입을 고민하시는 분들께 도움이 되길 바라며 경험을 공유합니다!</p>
+
+        <p>궁금한 점 있으시면 언제든 댓글로 물어보세요 😊</p>
+      </article>
+
+      <!-- 댓글 섹션 -->
+      <section class="comments-section">
+        <div class="comments-header">
+          <h3 class="comments-title">댓글 23개</h3>
+          <p class="comments-hint">실전 사례일수록 더 좋아요. 민감정보는 가려주세요.</p>
+        </div>
+        
+        <div class="comment-form">
+          <textarea class="comment-textarea" placeholder="댓글을 입력하세요. (Ctrl+Enter로 빠른 등록)" id="commentText"></textarea>
+          <div class="comment-actions">
+            <button class="comment-btn" onclick="cancelComment()">취소</button>
+            <button class="comment-btn primary" onclick="submitComment()" disabled id="submitBtn">댓글 등록</button>
+          </div>
+        </div>
+        
+        <div class="comments-list">
+          <div class="comment">
+            <div class="comment-header">
+              <div class="comment-avatar">원</div>
+              <span class="comment-author">원격근무신청자</span>
+              <span class="comment-date">2024.01.13 16:30</span>
+            </div>
+            <div class="comment-content">
+              와 정말 부럽네요! 저희도 원격근무 도입을 건의했는데 아직 검토 중이에요. 혹시 경영진 설득 과정에서 어떤 포인트가 효과적이었나요?
+            </div>
+          </div>
+          
+          <div class="comment">
+            <div class="comment-header">
+              <div class="comment-avatar">생</div>
+              <span class="comment-author">생산성분석가</span>
+              <span class="comment-date">2024.01.13 18:45</span>
+            </div>
+            <div class="comment-content">
+              생산성 측정을 어떤 방식으로 하셨는지 궁금해요. 프로젝트 완료 속도 외에 다른 지표도 사용하셨나요?
+            </div>
+          </div>
+          
+          <div class="comment">
+            <div class="comment-header">
+              <div class="comment-avatar">HR</div>
+              <span class="comment-author">HR동료</span>
+              <span class="comment-date">2024.01.14 09:20</span>
+            </div>
+            <div class="comment-content">
+              하이브리드 방식이 정말 좋은 것 같아요. 저희도 비슷하게 운영하고 있는데, 팀별로 원격근무 일수를 다르게 하시나요?
+            </div>
+          </div>
+          
+          <div class="comment">
+            <div class="comment-header">
+              <div class="comment-avatar">신</div>
+              <span class="comment-author">신입HR</span>
+              <span class="comment-date">2024.01.14 14:15</span>
+            </div>
+            <div class="comment-content">
+              신입사원 적응 부분이 특히 도움되었어요! 첫 6개월 사무실 위주 근무는 정말 좋은 아이디어네요. 다른 회사들도 참고했으면 좋겠어요 👍
+            </div>
+          </div>
+          
+          <div class="comment">
+            <div class="comment-header">
+              <div class="comment-avatar">성</div>
+              <span class="comment-author">성과관리자</span>
+              <span class="comment-date">2024.01.15 11:30</span>
+            </div>
+            <div class="comment-content">
+              목표 달성도 중심으로 전환하신 부분 정말 인상깊어요. 구체적으로 어떤 KPI들을 설정하셨는지도 궁금합니다!
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- 푸터 -->
+  <footer class="footer">
+    <div class="container">
+      <p>© 2024 Plain. All rights reserved.</p>
+    </div>
+  </footer>
+
+  <script>
+    // 댓글 기능
+    const commentText = document.getElementById('commentText');
+    const submitBtn = document.getElementById('submitBtn');
+    
+    commentText.addEventListener('input', function() {
+      submitBtn.disabled = !this.value.trim();
+    });
+    
+    commentText.addEventListener('keydown', function(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        if (this.value.trim()) {
+          submitComment();
+        }
+      }
+    });
+    
+    function cancelComment() {
+      commentText.value = '';
+      submitBtn.disabled = true;
+    }
+    
+    function submitComment() {
+      if (!commentText.value.trim()) return;
+      
+      alert('댓글이 등록되었습니다! (실제 구현에서는 서버 연동)');
+      cancelComment();
+    }
+    
+    // 좋아요 기능
+    let isLiked = false;
+    let likeCount = 67;
+    
+    function toggleLike() {
+      const likeBtn = document.querySelector('.action-btn');
+      const likeIcon = document.getElementById('like-icon');
+      const likeCountSpan = document.getElementById('like-count');
+      
+      isLiked = !isLiked;
+      
+      if (isLiked) {
+        likeCount++;
+        likeBtn.classList.add('liked');
+        likeIcon.textContent = '❤️';
+      } else {
+        likeCount--;
+        likeBtn.classList.remove('liked');
+        likeIcon.textContent = '👍';
+      }
+      
+      likeCountSpan.textContent = likeCount;
+    }
+    
+    // 북마크 기능
+    let isBookmarked = false;
+    
+    function toggleBookmark() {
+      const bookmarkBtn = document.querySelectorAll('.action-btn')[1];
+      const bookmarkIcon = document.getElementById('bookmark-icon');
+      isBookmarked = !isBookmarked;
+      
+      if (isBookmarked) {
+        bookmarkBtn.classList.add('bookmarked');
+        bookmarkIcon.textContent = '📑';
+        alert('북마크에 추가되었습니다!');
+      } else {
+        bookmarkBtn.classList.remove('bookmarked');
+        bookmarkIcon.textContent = '🔖';
+        alert('북마크에서 제거되었습니다!');
+      }
+    }
+
+    // 다크 모드 기능
+    function toggleTheme() {
+      const currentTheme = document.documentElement.getAttribute('data-theme');
+      const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      const toggleBtn = document.getElementById('themeToggle');
+      
+      document.documentElement.setAttribute('data-theme', newTheme);
+      localStorage.setItem('theme', newTheme);
+      
+      toggleBtn.textContent = newTheme === 'dark' ? '🌞' : '🌚';
+    }
+
+    // 초기 테마 설정
+    function initTheme() {
+      const savedTheme = localStorage.getItem('theme') || 'light';
+      const toggleBtn = document.getElementById('themeToggle');
+      
+      document.documentElement.setAttribute('data-theme', savedTheme);
+      toggleBtn.textContent = savedTheme === 'dark' ? '🌞' : '🌚';
+    }
+
+    // 페이지 로드 시 테마 초기화
+    initTheme();
+  </script>
+</body>
+</html>

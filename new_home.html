@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Plain - 인사담당자를 위한 이야기와 라운지</title>
+  
+  <!-- Pretendard 폰트 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css" />
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      line-height: 1.6;
+      color: #1a202c;
+      background-color: #ffffff;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+    
+    /* 헤더 */
+    .header {
+      background: white;
+      border-bottom: 1px solid #e5e7eb;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      padding: 12px 0;
+    }
+    
+    .nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .logo {
+      display: flex;
+      align-items: center;
+      text-decoration: none;
+    }
+    
+    .logo img {
+      height: 32px;
+      width: auto;
+    }
+    
+    .nav-links {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    
+    .nav-link {
+      padding: 8px 16px;
+      color: #374151;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: 500;
+      transition: background 0.2s;
+    }
+    
+    .nav-link:hover {
+      background: #f3f4f6;
+    }
+    
+    .login-btn {
+      background: #7A5AF8;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 500;
+      transition: background 0.2s;
+      margin-left: 8px;
+    }
+    
+    .login-btn:hover {
+      background: #6d48f7;
+    }
+    
+    /* 다크 모드 토글 */
+    .theme-toggle {
+      background: none;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      padding: 6px 10px;
+      color: #374151;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 16px;
+      margin-right: 8px;
+    }
+    
+    .theme-toggle:hover {
+      background: #f3f4f6;
+    }
+    
+    /* 메인 콘텐츠 */
+    .main-content {
+      padding: 20px 0 80px;
+    }
+    
+    .content-wrapper {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 60px;
+      margin-top: 20px;
+    }
+    
+    .main-stories {
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+    }
+    
+    .section-header {
+      margin-bottom: 24px;
+    }
+    
+    .section-title {
+      font-size: 28px;
+      font-weight: 700;
+      color: #111827;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    .story-icon {
+      width: 28px;
+      height: 28px;
+      background: #7A5AF8;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    
+    .section-subtitle {
+      color: #6b7280;
+      font-size: 14px;
+    }
+    
+    /* 사이드바 Lounge */
+    .sidebar-lounge {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+    
+    .sidebar-title {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--text-color) !important;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .lounge-icon {
+      width: 20px;
+      height: 20px;
+      background: #10b981;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 10px;
+      font-weight: 600;
+    }
+    
+    .sidebar-lounge-list {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    
+    .sidebar-lounge-item {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border-color);
+      text-decoration: none;
+      color: inherit;
+      display: block;
+      transition: background 0.2s;
+    }
+    
+    .sidebar-lounge-item:last-child {
+      border-bottom: none;
+    }
+    
+    .sidebar-lounge-item:hover {
+      background: var(--secondary-bg);
+      text-decoration: none;
+      color: inherit;
+    }
+    
+    .sidebar-item-badges {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 6px;
+    }
+    
+    .sidebar-item-title {
+      font-size: 13px;
+      font-weight: 500;
+      line-height: 1.4;
+      margin-bottom: 4px;
+      color: var(--text-color);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    
+    .sidebar-item-meta {
+      font-size: 11px;
+      color: var(--muted-text);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .view-more-link {
+      color: #7A5AF8;
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 500;
+      margin-top: 16px;
+      display: inline-block;
+    }
+    
+    .view-more-link:hover {
+      text-decoration: underline;
+    }
+    
+    /* 메인 Story 카드들 */
+    .featured-story {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      overflow: hidden;
+      text-decoration: none;
+      color: inherit;
+      display: block;
+      transition: all 0.3s;
+    }
+    
+    .featured-story:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+      text-decoration: none;
+      color: inherit;
+    }
+    
+    .featured-story-image {
+      width: 100%;
+      height: 240px;
+      object-fit: cover;
+    }
+    
+    .featured-story-content {
+      padding: 24px;
+    }
+    
+    .story-badges {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    
+    .story-badge {
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    
+    .badge-from-lounge {
+      background: #f3e8ff;
+      color: #7c3aed;
+    }
+    
+    .badge-verified {
+      background: #d1fae5;
+      color: #065f46;
+    }
+    
+    [data-theme="dark"] .badge-from-lounge {
+      background: #4c1d95;
+      color: #c4b5fd;
+    }
+    
+    [data-theme="dark"] .badge-verified {
+      background: #14532d;
+      color: #86efac;
+    }
+    
+    .featured-story-title {
+      font-size: 22px;
+      font-weight: 600;
+      line-height: 1.4;
+      margin-bottom: 12px;
+      color: var(--text-color);
+    }
+    
+    .featured-story-summary {
+      font-size: 16px;
+      color: var(--muted-text);
+      line-height: 1.6;
+      margin-bottom: 16px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    
+    .story-tags {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    
+    .featured-story-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 14px;
+      color: var(--muted-text);
+    }
+    
+    .story-author {
+      font-weight: 500;
+    }
+    
+    .story-stats {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    
+    .story-card {
+      background: white;
+      border-radius: 12px;
+      border: 1px solid #e5e7eb;
+      overflow: hidden;
+      margin-bottom: 20px;
+      transition: all 0.2s;
+      text-decoration: none;
+      color: inherit;
+      display: block;
+    }
+    
+    .story-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      text-decoration: none;
+      color: inherit;
+    }
+    
+    .story-image {
+      width: 100%;
+      height: 180px;
+      object-fit: cover;
+    }
+    
+    .story-content {
+      padding: 20px;
+    }
+    
+    .story-title {
+      font-size: 16px;
+      font-weight: 600;
+      line-height: 1.4;
+      margin-bottom: 8px;
+      color: #111827;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    
+    .story-summary {
+      font-size: 14px;
+      color: #6b7280;
+      line-height: 1.5;
+      margin-bottom: 12px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    
+    .story-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      color: #9ca3af;
+    }
+    
+    .story-tags {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    
+    .tag {
+      padding: 2px 6px;
+      background: #f3f4f6;
+      color: #374151;
+      border-radius: 3px;
+      font-size: 11px;
+    }
+    
+    /* 소형 배지들 */
+    .small-type-badge {
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 500;
+    }
+    
+    .small-excellent-badge {
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 500;
+    }
+    
+    /* 푸터 */
+    .footer {
+      background: #f9fafb;
+      padding: 32px 0;
+      text-align: center;
+      margin-top: 80px;
+    }
+    
+    .footer p {
+      color: #6b7280;
+      font-size: 14px;
+    }
+    
+    /* 로그인 모달 */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    
+    .modal-overlay.show {
+      display: flex;
+    }
+    
+    .modal {
+      background: white;
+      border-radius: 12px;
+      padding: 32px;
+      width: 400px;
+      max-width: 90vw;
+    }
+    
+    .modal h3 {
+      text-align: center;
+      font-size: 24px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #111827;
+    }
+    
+    .modal p {
+      text-align: center;
+      color: #6b7280;
+      margin-bottom: 24px;
+    }
+    
+    .social-login {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    
+    .social-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      text-decoration: none;
+      color: #374151;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    
+    .social-btn:hover {
+      background: #f9fafb;
+      text-decoration: none;
+      color: #374151;
+    }
+    
+    .social-btn.kakao {
+      background: #fee500;
+      border-color: #fee500;
+      color: #000;
+    }
+    
+    .social-btn.kakao:hover {
+      background: #e6cf00;
+    }
+    
+    .social-btn.google {
+      background: white;
+      border-color: #e5e7eb;
+    }
+    
+    .close-modal {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: none;
+      border: none;
+      font-size: 24px;
+      color: #9ca3af;
+      cursor: pointer;
+    }
+    
+    .modal {
+      position: relative;
+    }
+    
+    /* 다크 모드 스타일 */
+    [data-theme="dark"] {
+      --bg-color: #1f2937;
+      --text-color: #f9fafb;
+      --border-color: #374151;
+      --card-bg: #374151;
+      --secondary-bg: #111827;
+      --muted-text: #9ca3af;
+    }
+    
+    [data-theme="light"] {
+      --bg-color: #ffffff;
+      --text-color: #1a202c;
+      --border-color: #e5e7eb;
+      --card-bg: #ffffff;
+      --secondary-bg: #f9fafb;
+      --muted-text: #6b7280;
+    }
+    
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      transition: background-color 0.3s, color 0.3s;
+    }
+    
+    .header {
+      background: var(--bg-color);
+    }
+    
+    .story-card, .lounge-list {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+    }
+    
+    .story-card:hover {
+      box-shadow: 0 4px 12px rgba(122, 90, 248, 0.1);
+    }
+    
+    .lounge-item:hover {
+      background: var(--secondary-bg);
+    }
+    
+    .story-title, .lounge-title, .section-title, .hero h1 {
+      color: var(--text-color) !important;
+    }
+    
+    .story-summary, .hero p, .section-subtitle {
+      color: var(--muted-text) !important;
+    }
+    
+    .story-meta, .lounge-meta {
+      color: var(--muted-text) !important;
+    }
+    
+    .story-content, .lounge-item {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+    }
+    
+    .tag {
+      background: var(--secondary-bg) !important;
+      color: var(--muted-text) !important;
+    }
+    
+    /* 배지들은 다크모드에서도 원래 색상 유지 */
+    .type-question {
+      background: #dbeafe !important;
+      color: #1e40af !important;
+    }
+    
+    .type-experience {
+      background: #d1fae5 !important;
+      color: #065f46 !important;
+    }
+    
+    .type-help {
+      background: #e0e7ff !important;
+      color: #5b21b6 !important;
+    }
+    
+    .excellent-badge {
+      background: #fef3c7 !important;
+      color: #92400e !important;
+    }
+    
+    /* 다크모드에서 배지들 색상 조정 */
+    [data-theme="dark"] .type-question {
+      background: #1e3a8a !important;
+      color: #93c5fd !important;
+    }
+    
+    [data-theme="dark"] .type-experience {
+      background: #14532d !important;
+      color: #86efac !important;
+    }
+    
+    [data-theme="dark"] .type-help {
+      background: #4c1d95 !important;
+      color: #c4b5fd !important;
+    }
+    
+    [data-theme="dark"] .excellent-badge {
+      background: #92400e !important;
+      color: #fcd34d !important;
+    }
+    
+    .footer {
+      background: var(--secondary-bg);
+      border-top: 1px solid var(--border-color);
+    }
+    
+    .modal {
+      background: var(--card-bg);
+      color: var(--text-color);
+    }
+    
+    .modal-overlay {
+      background: rgba(0, 0, 0, 0.7);
+    }
+    
+    [data-theme="dark"] .theme-toggle {
+      border-color: #4b5563;
+      color: #f9fafb;
+    }
+    
+    [data-theme="dark"] .theme-toggle:hover {
+      background: #4b5563;
+    }
+    
+    /* 다크모드 추가 최적화 */
+    [data-theme="dark"] .nav-link {
+      color: #f9fafb !important;
+    }
+    
+    [data-theme="dark"] .nav-link:hover {
+      background: #374151 !important;
+    }
+    
+    /* 반응형 */
+    @media (max-width: 768px) {
+      .nav-links .nav-link:not(.login-btn):not(.theme-toggle) {
+        display: none;
+      }
+      
+      .content-wrapper {
+        grid-template-columns: 1fr;
+        gap: 40px;
+      }
+      
+      .section-title {
+        font-size: 24px;
+      }
+      
+      .featured-story-image {
+        height: 200px;
+      }
+      
+      .featured-story-title {
+        font-size: 18px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- 헤더 -->
+  <header class="header">
+    <div class="container">
+      <nav class="nav">
+        <a href="#" class="logo">
+          <img src="app/javascript/logo/plain.png" alt="Plain" />
+        </a>
+        <div class="nav-links">
+          <a href="stories.html" class="nav-link">Story</a>
+          <a href="lounge.html" class="nav-link">Lounge</a>
+          <button class="theme-toggle" onclick="toggleTheme()" id="themeToggle">🌚</button>
+          <a href="#" class="nav-link login-btn" onclick="openLoginModal()">로그인</a>
+        </div>
+      </nav>
+    </div>
+  </header>
+
+
+  <!-- 메인 콘텐츠 -->
+  <main class="main-content">
+    <div class="container">
+      <div class="content-wrapper">
+        <!-- 메인 Story 섹션 -->
+        <div class="main-stories">
+          <div class="section-header">
+            <h2 class="section-title">
+              <span class="story-icon">S</span>
+              Story
+            </h2>
+            <p class="section-subtitle">전문가가 엄선한 HR 콘텐츠</p>
+          </div>
+          
+          <a href="story_detail.html" class="featured-story">
+            <img src="https://images.unsplash.com/photo-1552664730-d307ca884978?w=800&h=400&fit=crop" 
+                 alt="신입사원 온보딩" class="featured-story-image">
+            <div class="featured-story-content">
+              <div class="story-badges">
+                <span class="story-badge badge-from-lounge">라운지의 박인사님 글을 바탕으로 재구성했어요</span>
+                <span class="story-badge badge-verified">검수 완료</span>
+              </div>
+              <h3 class="featured-story-title">신입사원 온보딩 프로세스 완전 정복</h3>
+              <p class="featured-story-summary">효과적인 온보딩 프로세스로 신입사원의 조기 정착을 돕고, 생산성을 빠르게 향상시키는 방법을 소개합니다.</p>
+              <div class="story-tags">
+                <span class="tag">온보딩</span>
+                <span class="tag">신입사원</span>
+                <span class="tag">HR프로세스</span>
+                <span class="tag">조직문화</span>
+              </div>
+              <div class="featured-story-meta">
+                <div>
+                  <span class="story-author">월급날 에디터</span>
+                  <span> • 2024.01.15</span>
+                </div>
+                <div class="story-stats">
+                  <span>5분 읽기</span>
+                  <span>👍 89</span>
+                  <span>👁 1,250</span>
+                </div>
+              </div>
+            </div>
+          </a>
+          
+          <a href="story_detail.html" class="featured-story">
+            <img src="https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=800&h=400&fit=crop" 
+                 alt="원격근무 성과평가" class="featured-story-image">
+            <div class="featured-story-content">
+              <h3 class="featured-story-title">원격근무 시대, 변화하는 성과평가 기준</h3>
+              <p class="featured-story-summary">디지털 전환과 함께 변화하는 업무 환경에서 공정하고 효과적인 성과평가 시스템을 구축하는 방법을 알아봅시다.</p>
+              <div class="story-tags">
+                <span class="tag">성과평가</span>
+                <span class="tag">원격근무</span>
+                <span class="tag">HR시스템</span>
+              </div>
+              <div class="featured-story-meta">
+                <div>
+                  <span class="story-author">월급날 에디터</span>
+                  <span> • 2024.01.12</span>
+                </div>
+                <div class="story-stats">
+                  <span>7분 읽기</span>
+                  <span>👍 156</span>
+                  <span>👁 2,100</span>
+                </div>
+              </div>
+            </div>
+          </a>
+          
+          <a href="stories.html" class="view-more-link">모든 Story 보기 →</a>
+        </div>
+        
+        <!-- 사이드바 Lounge -->
+        <div class="sidebar-lounge">
+          <div class="sidebar-title">
+            <span class="lounge-icon">L</span>
+            인기 Lounge
+          </div>
+          
+          <div class="sidebar-lounge-list">
+            <a href="lounge_detail.html" class="sidebar-lounge-item">
+              <div class="sidebar-item-badges">
+                <span class="small-type-badge type-experience">경험담</span>
+                <span class="small-excellent-badge excellent-badge">우수</span>
+              </div>
+              <div class="sidebar-item-title">원격근무 도입 후 직원 만족도가 90% 이상 나왔어요!</div>
+              <div class="sidebar-item-meta">
+                <span>원격근무성공담</span>
+                <span>👍 67 💬 23</span>
+              </div>
+            </a>
+            
+            <a href="lounge_detail.html" class="sidebar-lounge-item">
+              <div class="sidebar-item-badges">
+                <span class="small-type-badge type-help">도움글</span>
+                <span class="small-excellent-badge excellent-badge">우수</span>
+              </div>
+              <div class="sidebar-item-title">면접 노쇼 방지하는 나만의 꿀팁</div>
+              <div class="sidebar-item-meta">
+                <span>채용달인</span>
+                <span>👍 89 💬 31</span>
+              </div>
+            </a>
+            
+            <a href="lounge_detail.html" class="sidebar-lounge-item">
+              <div class="sidebar-item-badges">
+                <span class="small-type-badge type-help">도움글</span>
+                <span class="small-excellent-badge excellent-badge">우수</span>
+              </div>
+              <div class="sidebar-item-title">사내 소통 개선을 위한 작은 변화들</div>
+              <div class="sidebar-item-meta">
+                <span>소통개선러</span>
+                <span>👍 76 💬 29</span>
+              </div>
+            </a>
+            
+            <a href="lounge_detail.html" class="sidebar-lounge-item">
+              <div class="sidebar-item-badges">
+                <span class="small-type-badge type-question">질문</span>
+              </div>
+              <div class="sidebar-item-title">신입사원 교육 프로그램, 어떻게 구성하는 게 좋을까요?</div>
+              <div class="sidebar-item-meta">
+                <span>신입HR김씨</span>
+                <span>👍 12 💬 8</span>
+              </div>
+            </a>
+            
+            <a href="lounge_detail.html" class="sidebar-lounge-item">
+              <div class="sidebar-item-badges">
+                <span class="small-type-badge type-help">도움글</span>
+                <span class="small-excellent-badge excellent-badge">우수</span>
+              </div>
+              <div class="sidebar-item-title">신규 입사자 위한 버디 시스템 운영 후기</div>
+              <div class="sidebar-item-meta">
+                <span>버디시스템운영자</span>
+                <span>👍 52 💬 16</span>
+              </div>
+            </a>
+          </div>
+          
+          <a href="lounge.html" class="view-more-link">모든 Lounge 보기 →</a>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- 푸터 -->
+  <footer class="footer">
+    <div class="container">
+      <p>© 2024 Plain. All rights reserved.</p>
+    </div>
+  </footer>
+
+  <!-- 로그인 모달 -->
+  <div class="modal-overlay" id="loginModal">
+    <div class="modal">
+      <button class="close-modal" onclick="closeLoginModal()">&times;</button>
+      <h3>Plain에 오신 걸 환영합니다</h3>
+      <p>소셜 계정으로 간편하게 시작하세요</p>
+      
+      <div class="social-login">
+        <a href="#" class="social-btn kakao" onclick="loginWithKakao()">
+          <span>🟡</span>
+          카카오로 시작하기
+        </a>
+        <a href="#" class="social-btn google" onclick="loginWithGoogle()">
+          <span>🔵</span>
+          구글로 시작하기
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 모달 관련 함수들
+    function openLoginModal() {
+      document.getElementById('loginModal').classList.add('show');
+    }
+    
+    function closeLoginModal() {
+      document.getElementById('loginModal').classList.remove('show');
+    }
+    
+    // 클릭 외부 영역 클릭시 모달 닫기
+    document.getElementById('loginModal').addEventListener('click', function(e) {
+      if (e.target === this) {
+        closeLoginModal();
+      }
+    });
+    
+    // 소셜 로그인 함수들 (목업)
+    function loginWithKakao() {
+      alert('카카오 로그인 기능은 개발 중입니다.');
+      closeLoginModal();
+    }
+    
+    function loginWithGoogle() {
+      alert('구글 로그인 기능은 개발 중입니다.');
+      closeLoginModal();
+    }
+    
+    // 다크 모드 기능
+    function toggleTheme() {
+      const currentTheme = document.documentElement.getAttribute('data-theme');
+      const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      const toggleBtn = document.getElementById('themeToggle');
+      
+      document.documentElement.setAttribute('data-theme', newTheme);
+      localStorage.setItem('theme', newTheme);
+      
+      toggleBtn.textContent = newTheme === 'dark' ? '🌞' : '🌚';
+    }
+    
+    // 초기 테마 설정
+    function initTheme() {
+      const savedTheme = localStorage.getItem('theme') || 'light';
+      const toggleBtn = document.getElementById('themeToggle');
+      
+      document.documentElement.setAttribute('data-theme', savedTheme);
+      toggleBtn.textContent = savedTheme === 'dark' ? '🌞' : '🌚';
+    }
+    
+    // 페이지 로드 시 테마 초기화
+    initTheme();
+  </script>
+</body>
+</html>

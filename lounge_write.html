@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>글쓰기 - Plain</title>
+  
+  <!-- Pretendard 폰트 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css" />
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      line-height: 1.6;
+      color: #1a202c;
+      background-color: #ffffff;
+    }
+    
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+    
+    /* 헤더 */
+    .header {
+      background: white;
+      border-bottom: 1px solid #e5e7eb;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      padding: 12px 0;
+    }
+    
+    .nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+    
+    .logo {
+      display: flex;
+      align-items: center;
+      text-decoration: none;
+    }
+    
+    .logo img {
+      height: 32px;
+      width: auto;
+    }
+    
+    .nav-links {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    
+    .nav-link {
+      padding: 8px 16px;
+      color: #374151;
+      text-decoration: none;
+      border-radius: 8px;
+      font-weight: 500;
+      transition: background 0.2s;
+    }
+    
+    .nav-link:hover {
+      background: #f3f4f6;
+    }
+    
+    .user-profile {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 8px;
+      color: #374151;
+      font-weight: 500;
+    }
+    
+    .user-avatar {
+      width: 28px;
+      height: 28px;
+      background: #7A5AF8;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 600;
+      font-size: 12px;
+    }
+    
+    /* 메인 콘텐츠 */
+    .main-content {
+      padding: 40px 0 80px;
+    }
+    
+    .breadcrumb {
+      margin-bottom: 32px;
+      font-size: 14px;
+      color: #6b7280;
+    }
+    
+    .breadcrumb a {
+      color: #7A5AF8;
+      text-decoration: none;
+    }
+    
+    .breadcrumb a:hover {
+      text-decoration: underline;
+    }
+    
+    .write-header {
+      margin-bottom: 40px;
+    }
+    
+    .write-header h1 {
+      font-size: 32px;
+      font-weight: 700;
+      color: #111827;
+      margin-bottom: 8px;
+    }
+    
+    .write-header p {
+      color: #6b7280;
+      font-size: 16px;
+    }
+    
+    /* 글쓰기 폼 */
+    .write-form {
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 32px;
+    }
+    
+    .form-group {
+      margin-bottom: 32px;
+    }
+    
+    .form-label {
+      display: block;
+      font-weight: 600;
+      color: #111827;
+      margin-bottom: 8px;
+      font-size: 16px;
+    }
+    
+    .form-help {
+      font-size: 14px;
+      color: #6b7280;
+      margin-bottom: 12px;
+    }
+    
+    .form-select {
+      width: 100%;
+      padding: 12px 16px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 16px;
+      font-family: inherit;
+      background: white;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    
+    .form-select:focus {
+      outline: none;
+      border-color: #7A5AF8;
+      box-shadow: 0 0 0 3px rgba(122, 90, 248, 0.1);
+    }
+    
+    .form-input {
+      width: 100%;
+      padding: 16px 20px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 18px;
+      font-family: inherit;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    
+    .form-input:focus {
+      outline: none;
+      border-color: #7A5AF8;
+      box-shadow: 0 0 0 3px rgba(122, 90, 248, 0.1);
+    }
+    
+    .char-count {
+      text-align: right;
+      font-size: 13px;
+      color: #6b7280;
+      margin-top: 8px;
+    }
+    
+    .form-textarea {
+      width: 100%;
+      min-height: 400px;
+      padding: 20px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 16px;
+      font-family: inherit;
+      line-height: 1.6;
+      resize: vertical;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    
+    .form-textarea:focus {
+      outline: none;
+      border-color: #7A5AF8;
+      box-shadow: 0 0 0 3px rgba(122, 90, 248, 0.1);
+    }
+    
+    .content-help {
+      background: #f0f9ff;
+      border: 1px solid #bae6fd;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+      font-size: 14px;
+      color: #0c4a6e;
+      line-height: 1.5;
+    }
+    
+    .content-help strong {
+      display: block;
+      margin-bottom: 8px;
+    }
+    
+    /* 태그 섹션 */
+    .tags-section {
+      margin-bottom: 24px;
+    }
+    
+    .selected-tags {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+      min-height: 32px;
+      align-items: center;
+    }
+    
+    .selected-tag {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      background: #7A5AF8;
+      color: white;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    
+    .tag-remove {
+      cursor: pointer;
+      color: rgba(255, 255, 255, 0.8);
+      font-weight: 600;
+    }
+    
+    .tag-remove:hover {
+      color: white;
+    }
+    
+    .popular-tags {
+      margin-bottom: 16px;
+    }
+    
+    .popular-tags-label {
+      font-size: 14px;
+      color: #6b7280;
+      margin-bottom: 12px;
+      display: block;
+    }
+    
+    .popular-tags-grid {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    
+    .popular-tag {
+      padding: 6px 12px;
+      background: #f3f4f6;
+      color: #374151;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: none;
+    }
+    
+    .popular-tag:hover {
+      background: #e5e7eb;
+    }
+    
+    .popular-tag.selected {
+      background: #7A5AF8;
+      color: white;
+    }
+    
+    .popular-tag:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    /* 제출 버튼 영역 */
+    .submit-section {
+      border-top: 1px solid #e5e7eb;
+      padding-top: 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .submit-buttons {
+      display: flex;
+      gap: 12px;
+    }
+    
+    .btn {
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-weight: 500;
+      font-size: 16px;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid;
+    }
+    
+    .btn-cancel {
+      background: white;
+      border-color: #d1d5db;
+      color: #374151;
+    }
+    
+    .btn-cancel:hover {
+      background: #f9fafb;
+    }
+    
+    .btn-primary {
+      background: #7A5AF8;
+      border-color: #7A5AF8;
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      background: #6d48f7;
+      border-color: #6d48f7;
+    }
+    
+    .btn-primary:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .draft-save {
+      font-size: 14px;
+      color: #6b7280;
+    }
+    
+    /* 미리보기 */
+    .preview-section {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 32px;
+      margin-top: 24px;
+      display: none;
+    }
+    
+    .preview-header {
+      display: flex;
+      align-items: center;
+      justify-content: between;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    
+    .preview-title {
+      font-size: 20px;
+      font-weight: 600;
+      color: #111827;
+      margin-right: auto;
+    }
+    
+    .preview-close {
+      background: none;
+      border: none;
+      font-size: 20px;
+      color: #6b7280;
+      cursor: pointer;
+      padding: 4px;
+    }
+    
+    .preview-content {
+      font-size: 16px;
+      line-height: 1.8;
+      color: #374151;
+    }
+    
+    .preview-content h2 {
+      font-size: 20px;
+      font-weight: 600;
+      margin: 24px 0 12px 0;
+      color: #111827;
+    }
+    
+    .preview-content h3 {
+      font-size: 18px;
+      font-weight: 600;
+      margin: 20px 0 8px 0;
+      color: #111827;
+    }
+    
+    .preview-content p {
+      margin-bottom: 16px;
+    }
+    
+    .preview-content ul,
+    .preview-content ol {
+      margin: 12px 0 12px 20px;
+    }
+    
+    .preview-content li {
+      margin-bottom: 4px;
+    }
+    
+    /* 반응형 */
+    @media (max-width: 768px) {
+      .write-form {
+        padding: 24px 16px;
+      }
+      
+      .submit-section {
+        flex-direction: column;
+        gap: 16px;
+        align-items: stretch;
+      }
+      
+      .submit-buttons {
+        order: 2;
+      }
+      
+      .draft-save {
+        order: 1;
+        text-align: center;
+      }
+      
+      .nav-links .nav-link:nth-child(1),
+      .nav-links .nav-link:nth-child(2) {
+        display: none;
+      }
+    }
+
+    /* 다크 모드 토글 */
+    .theme-toggle {
+      background: none;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      padding: 6px 10px;
+      color: #374151;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 16px;
+      margin-right: 8px;
+    }
+
+    .theme-toggle:hover {
+      background: #f3f4f6;
+    }
+
+    /* 다크 모드 스타일 */
+    [data-theme="dark"] {
+      --bg-color: #1f2937;
+      --text-color: #f9fafb;
+      --border-color: #374151;
+      --card-bg: #374151;
+      --secondary-bg: #111827;
+      --muted-text: #9ca3af;
+    }
+
+    [data-theme="light"] {
+      --bg-color: #ffffff;
+      --text-color: #1a202c;
+      --border-color: #e5e7eb;
+      --card-bg: #ffffff;
+      --secondary-bg: #f9fafb;
+      --muted-text: #6b7280;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      transition: background-color 0.3s, color 0.3s;
+    }
+
+    .header {
+      background: var(--bg-color);
+    }
+
+    [data-theme="dark"] .theme-toggle {
+      border-color: #4b5563;
+      color: #f9fafb;
+    }
+
+    [data-theme="dark"] .theme-toggle:hover {
+      background: #4b5563;
+    }
+
+    /* 다크 모드 폼 스타일 */
+    [data-theme="dark"] .write-form {
+      background: var(--card-bg);
+      border-color: var(--border-color);
+    }
+
+    [data-theme="dark"] .form-select {
+      background: var(--secondary-bg);
+      border-color: var(--border-color);
+      color: var(--text-color);
+    }
+
+    [data-theme="dark"] .form-input {
+      background: var(--secondary-bg);
+      border-color: var(--border-color);
+      color: var(--text-color);
+    }
+
+    [data-theme="dark"] .form-textarea {
+      background: var(--secondary-bg);
+      border-color: var(--border-color);
+      color: var(--text-color);
+    }
+
+    [data-theme="dark"] .content-help {
+      background: #1e3a8a;
+      border-color: #3b82f6;
+      color: #93c5fd;
+    }
+
+    [data-theme="dark"] .popular-tag {
+      background: var(--secondary-bg);
+      color: var(--text-color);
+    }
+
+    [data-theme="dark"] .popular-tag:hover {
+      background: var(--border-color);
+    }
+
+    [data-theme="dark"] .btn-cancel {
+      background: var(--card-bg);
+      border-color: var(--border-color);
+      color: var(--text-color);
+    }
+
+    [data-theme="dark"] .btn-cancel:hover {
+      background: var(--secondary-bg);
+    }
+
+    [data-theme="dark"] .preview-section {
+      background: var(--card-bg);
+      border-color: var(--border-color);
+    }
+
+    /* 다크모드 최적화 - 모든 색상이 제대로 바뀌도록 !important 추가 */
+    [data-theme="dark"] .nav-link {
+      color: #f9fafb !important;
+    }
+
+    [data-theme="dark"] .nav-link:hover {
+      background: #374151 !important;
+    }
+
+    /* 각 페이지별 특수 요소들 */
+    .write-form {
+      background: var(--card-bg) !important;
+      border: 1px solid var(--border-color) !important;
+    }
+
+    .form-label {
+      color: var(--text-color) !important;
+    }
+
+    /* 폼 요소들 */
+    .form-input, .form-textarea, .form-select {
+      background: var(--card-bg) !important;
+      color: var(--text-color) !important;
+      border: 1px solid var(--border-color) !important;
+    }
+  </style>
+</head>
+<body>
+  <!-- 헤더 -->
+  <header class="header">
+    <div class="nav">
+      <a href="new_home.html" class="logo">
+        <img src="app/javascript/logo/plain.png" alt="Plain" />
+      </a>
+      <div class="nav-links">
+        <a href="stories.html" class="nav-link">Story</a>
+        <a href="lounge.html" class="nav-link">Lounge</a>
+        <button class="theme-toggle" onclick="toggleTheme()" id="themeToggle">🌚</button>
+        <div class="user-profile">
+          <div class="user-avatar">김</div>
+          <span>김인사님</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- 메인 콘텐츠 -->
+  <main class="main-content">
+    <div class="container">
+      <!-- 브레드크럼 -->
+      <nav class="breadcrumb">
+        <a href="new_home.html">홈</a> > <a href="lounge.html">Lounge</a> > 글쓰기
+      </nav>
+
+      <!-- 글쓰기 헤더 -->
+      <div class="write-header">
+        <h1>글쓰기</h1>
+        <p>동료들과 경험과 노하우를 나눠보세요</p>
+      </div>
+
+      <!-- 글쓰기 폼 -->
+      <form class="write-form" id="writeForm">
+        <!-- 글 유형 선택 -->
+        <div class="form-group">
+          <label for="postType" class="form-label">글 유형</label>
+          <p class="form-help">어떤 종류의 글인지 선택해주세요</p>
+          <select id="postType" class="form-select" required>
+            <option value="">글 유형을 선택하세요</option>
+            <option value="question">물어보고 싶어요</option>
+            <option value="experience">이런 일이 있었어요</option>
+            <option value="help">도움이 될 글이에요</option>
+          </select>
+        </div>
+
+        <!-- 제목 입력 -->
+        <div class="form-group">
+          <label for="title" class="form-label">제목</label>
+          <input type="text" id="title" class="form-input" placeholder="제목을 입력하세요" maxlength="100" required>
+          <div class="char-count">
+            <span id="titleCount">0</span>/100자
+          </div>
+        </div>
+
+        <!-- 내용 입력 -->
+        <div class="form-group">
+          <label for="content" class="form-label">내용</label>
+          <div class="content-help" id="contentHelp">
+            <strong>글쓰기 가이드</strong>
+            글 유형을 먼저 선택하시면 맞춤형 작성 가이드를 보여드려요!
+          </div>
+          <textarea id="content" class="form-textarea" placeholder="내용을 입력하세요" required></textarea>
+          <p class="form-help">마크다운 문법을 지원합니다. 민감한 정보는 가려서 작성해주세요.</p>
+        </div>
+
+        <!-- 태그 선택 -->
+        <div class="form-group">
+          <label class="form-label">태그 (<span id="tagCount">0</span>/5)</label>
+          <div class="tags-section">
+            <div class="selected-tags" id="selectedTags">
+              <!-- 선택된 태그들이 여기 표시됩니다 -->
+            </div>
+            
+            <div class="popular-tags">
+              <span class="popular-tags-label">인기 태그에서 선택하세요:</span>
+              <div class="popular-tags-grid" id="popularTags">
+                <button type="button" class="popular-tag" data-tag="신입사원">신입사원</button>
+                <button type="button" class="popular-tag" data-tag="온보딩">온보딩</button>
+                <button type="button" class="popular-tag" data-tag="원격근무">원격근무</button>
+                <button type="button" class="popular-tag" data-tag="성과평가">성과평가</button>
+                <button type="button" class="popular-tag" data-tag="채용">채용</button>
+                <button type="button" class="popular-tag" data-tag="면접">면접</button>
+                <button type="button" class="popular-tag" data-tag="조직문화">조직문화</button>
+                <button type="button" class="popular-tag" data-tag="워라밸">워라밸</button>
+                <button type="button" class="popular-tag" data-tag="MZ세대">MZ세대</button>
+                <button type="button" class="popular-tag" data-tag="HR시스템">HR시스템</button>
+                <button type="button" class="popular-tag" data-tag="직원만족">직원만족</button>
+                <button type="button" class="popular-tag" data-tag="소통개선">소통개선</button>
+                <button type="button" class="popular-tag" data-tag="팀워크">팀워크</button>
+                <button type="button" class="popular-tag" data-tag="멘토링">멘토링</button>
+                <button type="button" class="popular-tag" data-tag="교육프로그램">교육프로그램</button>
+              </div>
+            </div>
+            
+            <p class="form-help">글 내용과 관련된 태그를 선택하면 다른 사용자가 찾기 쉬워집니다</p>
+          </div>
+        </div>
+
+        <!-- 제출 버튼 -->
+        <div class="submit-section">
+          <div class="draft-save">
+            <button type="button" class="btn btn-cancel" onclick="togglePreview()">미리보기</button>
+          </div>
+          
+          <div class="submit-buttons">
+            <a href="lounge.html" class="btn btn-cancel">취소</a>
+            <button type="submit" class="btn btn-primary" id="submitBtn" disabled>
+              <span>📝</span>
+              글 등록하기
+            </button>
+          </div>
+        </div>
+      </form>
+
+      <!-- 미리보기 섹션 -->
+      <div class="preview-section" id="previewSection">
+        <div class="preview-header">
+          <h3 class="preview-title">미리보기</h3>
+          <button type="button" class="preview-close" onclick="togglePreview()">&times;</button>
+        </div>
+        <div class="preview-content" id="previewContent">
+          <!-- 미리보기 내용이 여기 표시됩니다 -->
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // 폼 요소들
+    const postTypeSelect = document.getElementById('postType');
+    const titleInput = document.getElementById('title');
+    const contentTextarea = document.getElementById('content');
+    const titleCount = document.getElementById('titleCount');
+    const contentHelp = document.getElementById('contentHelp');
+    const selectedTagsContainer = document.getElementById('selectedTags');
+    const tagCountSpan = document.getElementById('tagCount');
+    const submitBtn = document.getElementById('submitBtn');
+    const writeForm = document.getElementById('writeForm');
+    
+    // 선택된 태그 배열
+    let selectedTags = [];
+    
+    // 글 유형별 가이드 메시지
+    const typeGuides = {
+      question: `<strong>질문 작성 가이드</strong>
+궁금한 점이나 도움이 필요한 상황을 자세히 설명해주세요.
+
+예시:
+• 현재 상황과 배경
+• 시도해본 것들  
+• 구체적으로 알고 싶은 점
+
+실전 사례일수록 더 좋아요. 민감정보는 가려주세요.`,
+      
+      experience: `<strong>경험담 작성 가이드</strong>
+겪으신 경험을 구체적으로 공유해주세요.
+
+예시:
+• 상황 설명
+• 문제 해결 과정
+• 결과와 배운 점
+• 다른 분들께 드리고 싶은 조언
+
+실전 사례일수록 더 좋아요. 민감정보는 가려주세요.`,
+      
+      help: `<strong>도움글 작성 가이드</strong>
+다른 분들께 도움이 될 정보나 팁을 공유해주세요.
+
+예시:
+• 유용한 도구나 방법론
+• 효과적인 프로세스
+• 참고할 만한 자료
+• 주의사항이나 고려사항
+
+실전 사례일수록 더 좋아요. 민감정보는 가려주세요.`
+    };
+    
+    // 제목 글자 수 카운터
+    titleInput.addEventListener('input', function() {
+      titleCount.textContent = this.value.length;
+      validateForm();
+    });
+    
+    // 글 유형 변경 시 가이드 업데이트
+    postTypeSelect.addEventListener('change', function() {
+      const selectedType = this.value;
+      if (selectedType && typeGuides[selectedType]) {
+        contentHelp.innerHTML = typeGuides[selectedType];
+      } else {
+        contentHelp.innerHTML = '<strong>글쓰기 가이드</strong>글 유형을 먼저 선택하시면 맞춤형 작성 가이드를 보여드려요!';
+      }
+      validateForm();
+    });
+    
+    // 내용 입력 시 폼 유효성 검사
+    contentTextarea.addEventListener('input', validateForm);
+    
+    // 태그 선택 기능
+    document.getElementById('popularTags').addEventListener('click', function(e) {
+      if (e.target.classList.contains('popular-tag') && !e.target.disabled) {
+        const tagName = e.target.getAttribute('data-tag');
+        
+        if (selectedTags.includes(tagName)) {
+          // 태그 제거
+          removeTag(tagName);
+        } else if (selectedTags.length < 5) {
+          // 태그 추가
+          addTag(tagName);
+        } else {
+          alert('태그는 최대 5개까지 선택할 수 있어요');
+        }
+      }
+    });
+    
+    // 태그 추가 함수
+    function addTag(tagName) {
+      selectedTags.push(tagName);
+      updateTagsDisplay();
+      validateForm();
+    }
+    
+    // 태그 제거 함수
+    function removeTag(tagName) {
+      selectedTags = selectedTags.filter(tag => tag !== tagName);
+      updateTagsDisplay();
+      validateForm();
+    }
+    
+    // 태그 디스플레이 업데이트
+    function updateTagsDisplay() {
+      // 선택된 태그 영역 업데이트
+      selectedTagsContainer.innerHTML = selectedTags.map(tag => 
+        `<span class="selected-tag">
+          ${tag}
+          <span class="tag-remove" onclick="removeTag('${tag}')">&times;</span>
+        </span>`
+      ).join('');
+      
+      // 태그 카운트 업데이트
+      tagCountSpan.textContent = selectedTags.length;
+      
+      // 인기 태그 버튼 상태 업데이트
+      document.querySelectorAll('.popular-tag').forEach(btn => {
+        const tagName = btn.getAttribute('data-tag');
+        if (selectedTags.includes(tagName)) {
+          btn.classList.add('selected');
+          btn.disabled = false;
+        } else {
+          btn.classList.remove('selected');
+          btn.disabled = selectedTags.length >= 5;
+        }
+      });
+    }
+    
+    // 폼 유효성 검사
+    function validateForm() {
+      const isValid = 
+        postTypeSelect.value.trim() !== '' &&
+        titleInput.value.trim() !== '' &&
+        contentTextarea.value.trim() !== '';
+      
+      submitBtn.disabled = !isValid;
+    }
+    
+    // 미리보기 토글
+    function togglePreview() {
+      const previewSection = document.getElementById('previewSection');
+      const previewContent = document.getElementById('previewContent');
+      
+      if (previewSection.style.display === 'none' || previewSection.style.display === '') {
+        // 미리보기 표시
+        const title = titleInput.value || '제목 없음';
+        const content = contentTextarea.value || '내용이 비어있습니다.';
+        
+        // 간단한 마크다운 파싱 (제목, 리스트만)
+        const parsedContent = content
+          .replace(/^## (.+)/gm, '<h2>$1</h2>')
+          .replace(/^### (.+)/gm, '<h3>$1</h3>')
+          .replace(/^\* (.+)/gm, '<li>$1</li>')
+          .replace(/^- (.+)/gm, '<li>$1</li>')
+          .replace(/\n\n/g, '</p><p>')
+          .replace(/^(.+)$/gm, '<p>$1</p>')
+          .replace(/<p><li>/g, '<ul><li>')
+          .replace(/<\/li><\/p>/g, '</li></ul>');
+        
+        previewContent.innerHTML = `
+          <h2>${title}</h2>
+          <div style="margin-bottom: 20px; font-size: 14px; color: #6b7280;">
+            ${getTypeText(postTypeSelect.value)} • 김인사님 • ${new Date().toLocaleDateString('ko-KR')}
+          </div>
+          ${parsedContent}
+        `;
+        
+        previewSection.style.display = 'block';
+        previewSection.scrollIntoView({ behavior: 'smooth' });
+      } else {
+        // 미리보기 숨기기
+        previewSection.style.display = 'none';
+      }
+    }
+    
+    // 글 유형 텍스트 반환
+    function getTypeText(type) {
+      switch (type) {
+        case 'question': return '물어보고 싶어요';
+        case 'experience': return '이런 일이 있었어요';
+        case 'help': return '도움이 될 글이에요';
+        default: return '';
+      }
+    }
+    
+    // 폼 제출 처리
+    writeForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+      
+      if (!validateForm()) {
+        alert('모든 필수 항목을 입력해주세요.');
+        return;
+      }
+      
+      // 제출 버튼 로딩 상태
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span>⏳</span> 등록 중...';
+      
+      // 실제 구현에서는 서버로 데이터 전송
+      setTimeout(() => {
+        alert('글이 성공적으로 등록되었습니다!');
+        window.location.href = 'lounge.html';
+      }, 2000);
+    });
+    
+    // 초기 설정
+    updateTagsDisplay();
+    validateForm();
+
+    // 다크 모드 기능
+    function toggleTheme() {
+      const currentTheme = document.documentElement.getAttribute('data-theme');
+      const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+      const toggleBtn = document.getElementById('themeToggle');
+      
+      document.documentElement.setAttribute('data-theme', newTheme);
+      localStorage.setItem('theme', newTheme);
+      
+      toggleBtn.textContent = newTheme === 'dark' ? '🌞' : '🌚';
+    }
+
+    // 초기 테마 설정
+    function initTheme() {
+      const savedTheme = localStorage.getItem('theme') || 'light';
+      const toggleBtn = document.getElementById('themeToggle');
+      
+      document.documentElement.setAttribute('data-theme', savedTheme);
+      toggleBtn.textContent = savedTheme === 'dark' ? '🌞' : '🌚';
+    }
+
+    // 페이지 로드 시 테마 초기화
+    initTheme();
+  </script>
+</body>
+</html>

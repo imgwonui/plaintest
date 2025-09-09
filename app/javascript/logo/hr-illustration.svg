@@ -1,0 +1,51 @@
+<svg width="400" height="320" viewBox="0 0 400 320" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="400" height="320" fill="#F8FAFC" rx="20"/>
+  
+  <!-- Desk -->
+  <ellipse cx="200" cy="280" rx="120" ry="25" fill="#E2E8F0"/>
+  
+  <!-- Person -->
+  <!-- Body -->
+  <path d="M160 180 C160 160, 240 160, 240 180 L240 250 C240 260, 230 270, 220 270 L180 270 C170 270, 160 260, 160 250 Z" fill="#3B82F6"/>
+  
+  <!-- Head -->
+  <circle cx="200" cy="140" r="35" fill="#FED7AA"/>
+  
+  <!-- Hair -->
+  <path d="M165 125 C165 110, 235 110, 235 125 C235 120, 200 105, 165 125" fill="#374151"/>
+  
+  <!-- Face -->
+  <circle cx="188" cy="135" r="2" fill="#1F2937"/>
+  <circle cx="212" cy="135" r="2" fill="#1F2937"/>
+  <path d="M190 150 C195 155, 205 155, 210 150" stroke="#1F2937" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+  
+  <!-- Arms -->
+  <path d="M160 190 C145 185, 140 195, 145 210 L165 220" stroke="#FED7AA" stroke-width="12" stroke-linecap="round"/>
+  <path d="M240 190 C255 185, 260 195, 255 210 L235 220" stroke="#FED7AA" stroke-width="12" stroke-linecap="round"/>
+  
+  <!-- Laptop -->
+  <rect x="175" y="215" width="50" height="35" rx="3" fill="#1F2937"/>
+  <rect x="178" y="218" width="44" height="25" rx="2" fill="#60A5FA"/>
+  <line x1="185" y1="225" x2="185" y2="235" stroke="#FFFFFF" stroke-width="2"/>
+  <line x1="195" y1="228" x2="195" y2="235" stroke="#FFFFFF" stroke-width="2"/>
+  <line x1="205" y1="222" x2="205" y2="235" stroke="#FFFFFF" stroke-width="2"/>
+  <line x1="215" y1="230" x2="215" y2="235" stroke="#FFFFFF" stroke-width="2"/>
+  
+  <!-- Documents -->
+  <rect x="120" y="225" width="20" height="25" rx="2" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1"/>
+  <line x1="125" y1="232" x2="135" y2="232" stroke="#6B7280" stroke-width="1"/>
+  <line x1="125" y1="237" x2="135" y2="237" stroke="#6B7280" stroke-width="1"/>
+  <line x1="125" y1="242" x2="132" y2="242" stroke="#6B7280" stroke-width="1"/>
+  
+  <!-- Coffee cup -->
+  <ellipse cx="280" cy="240" rx="8" ry="6" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1"/>
+  <rect x="272" y="234" width="16" height="12" fill="#F59E0B"/>
+  <path d="M288 238 C295 238, 295 242, 288 242" stroke="#E5E7EB" stroke-width="1" fill="none"/>
+  
+  <!-- Decorative elements -->
+  <circle cx="80" cy="80" r="8" fill="#F87171" opacity="0.6"/>
+  <rect x="320" y="70" width="12" height="12" rx="2" fill="#A78BFA" opacity="0.6"/>
+  <circle cx="330" cy="200" r="6" fill="#34D399" opacity="0.6"/>
+  <rect x="70" y="180" width="10" height="10" rx="2" fill="#FBBF24" opacity="0.6"/>
+</svg>

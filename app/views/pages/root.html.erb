@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Plain - 인사담당자를 위한 이야기와 라운지</title>
+  
+  <!-- Pretendard 폰트 -->
+  <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css" />
+  
+  <!-- 메타 태그 -->
+  <meta name="description" content="인사담당자를 위한 정보와 커뮤니티 플랫폼. 전문가 콘텐츠와 실무 경험을 공유하세요.">
+  <meta name="keywords" content="인사, HR, 채용, 조직문화, 직원관리, 성과평가">
+  
+  <!-- Open Graph -->
+  <meta property="og:title" content="Plain - 인사담당자를 위한 이야기와 라운지">
+  <meta property="og:description" content="인사담당자를 위한 정보와 커뮤니티 플랫폼">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="ko_KR">
+  
+  <!-- 파비콘 -->
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  
+  <style>
+    /* 기본 스타일 리셋 */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
+      line-height: 1.6;
+      color: #1a202c;
+      background-color: #ffffff;
+    }
+    
+    /* 로딩 화면 스타일 */
+    .loading-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: #ffffff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+    
+    .loading-spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid #e2e8f0;
+      border-top: 3px solid #7A5AF8;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 16px;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    .loading-text {
+      color: #4a5568;
+      font-size: 14px;
+    }
+    
+    /* React 앱이 로드되면 로딩 화면 숨기기 */
+    .app-loaded .loading-container {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <!-- 로딩 화면 -->
+  <div class="loading-container" id="loading">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">Plain 로딩 중...</div>
+  </div>
+  
+  <!-- React 앱이 마운트될 루트 엘리먼트 -->
+  <div id="root"></div>
+  
+  <script>
+    // React 앱이 로드되면 로딩 화면 제거
+    window.addEventListener('DOMContentLoaded', function() {
+      setTimeout(function() {
+        const loading = document.getElementById('loading');
+        if (loading) {
+          loading.style.display = 'none';
+        }
+        document.body.classList.add('app-loaded');
+      }, 500); // 0.5초 후 로딩 화면 제거
+    });
+  </script>
+  
+  <!-- React 앱 스크립트 (개발 환경에서는 webpack-dev-server를 통해 로드) -->
+  <script type="module" src="/app/javascript/main.jsx"></script>
+</body>
+</html>

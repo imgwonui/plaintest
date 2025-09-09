@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Plain - 인사담당자를 위한 이야기와 라운지</title>
+  
+  <!-- Pretendard 폰트 -->
+  <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css" />
+  
+  <!-- React 및 관련 라이브러리 CDN -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/react-router-dom@6/dist/umd/react-router-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/@chakra-ui/react@2.8.2/dist/index.umd.js"></script>
+  <script src="https://unpkg.com/@emotion/react@11/dist/emotion-react.umd.min.js"></script>
+  <script src="https://unpkg.com/@emotion/styled@11/dist/emotion-styled.umd.min.js"></script>
+  <script src="https://unpkg.com/framer-motion@11/dist/framer-motion.umd.js"></script>
+  <script src="https://unpkg.com/react-markdown@8.0.5/index.js"></script>
+  <script src="https://unpkg.com/dayjs@1.11.7/dayjs.min.js"></script>
+  <script src="https://unpkg.com/dayjs@1.11.7/locale/ko.js"></script>
+  <script src="https://unpkg.com/dayjs@1.11.7/plugin/relativeTime.js"></script>
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      line-height: 1.6;
+      color: #1a202c;
+      background-color: #ffffff;
+    }
+    
+    .loading-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: #ffffff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+    
+    .loading-spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid #e2e8f0;
+      border-top: 3px solid #7A5AF8;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 16px;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    .loading-text {
+      color: #4a5568;
+      font-size: 14px;
+    }
+    
+    .app-loaded .loading-container {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="loading-container" id="loading">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">Plain 로딩 중...</div>
+  </div>
+  
+  <div id="root"></div>
+  
+  <script type="text/babel">
+    // Chakra UI theme
+    const theme = {
+      colors: {
+        brand: {
+          50: '#f5f3ff',
+          100: '#ede9fe',
+          200: '#ddd6fe',
+          300: '#c4b5fd',
+          400: '#a78bfa',
+          500: '#7A5AF8',
+          600: '#6d48f7',
+          700: '#5b21b6',
+          800: '#4c1d95',
+          900: '#3c1a78',
+        },
+        gray: {
+          50: '#f9fafb',
+          100: '#f3f4f6',
+          200: '#e5e7eb',
+          300: '#d1d5db',
+          400: '#9ca3af',
+          500: '#6b7280',
+          600: '#4b5563',
+          700: '#374151',
+          800: '#1f2937',
+          900: '#111827',
+        }
+      },
+      fonts: {
+        heading: `"Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif`,
+        body: `"Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif`,
+      },
+    };
+
+    // Mock data
+    const stories = [
+      {
+        id: 1,
+        title: "신입사원 온보딩 프로세스 ",
+        summary: "효과적인 온보딩 프로세스로 신입사원의 조기 정착을 돕고, 생산성을 빠르게 향상시키는 방법을 소개합니다.",
+        content: "신입사원의 성공적인 정착은 회사와 개인 모두에게 중요합니다...",
+        imageUrl: "https://images.unsplash.com/photo-1552664730-d307ca884978?w=800&h=400&fit=crop",
+        tags: ["온보딩", "신입사원", "HR프로세스"],
+        author: "월급날 에디터",
+        createdAt: "2024-01-15T09:00:00Z",
+        readTime: 5,
+      },
+      {
+        id: 2,
+        title: "원격근무 시대, 변화하는 성과평가 기준",
+        summary: "디지털 전환과 함께 변화하는 업무 환경에서 공정하고 효과적인 성과평가 시스템을 구축하는 방법을 알아봅시다.",
+        content: "코로나19 이후 원격근무가 일반화되면서...",
+        imageUrl: "https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=800&h=400&fit=crop",
+        tags: ["성과평가", "원격근무", "HR시스템"],
+        author: "월급날 에디터",
+        createdAt: "2024-01-12T14:30:00Z",
+        readTime: 7,
+      }
+    ];
+
+    const loungePosts = [
+      {
+        id: 1,
+        title: "신입사원 교육 프로그램, 어떻게 구성하는 게 좋을까요?",
+        summary: "스타트업 신입 HR이 신입사원 5명을 위한 체계적인 교육 프로그램 구성에 대해 조언을 구합니다.",
+        type: 'question',
+        author: "신입HR김씨",
+        createdAt: "2024-01-14T10:30:00Z",
+        tags: ["신입사원", "교육프로그램", "온보딩"],
+        likeCount: 12,
+        commentCount: 8,
+        isExcellent: false,
+      },
+      {
+        id: 2,
+        title: "원격근무 도입 후 직원 만족도가 90% 이상 나왔어요!",
+        summary: "중소기업에서 원격근무 도입 후 직원 만족도 90% 달성한 성공 사례와 노하우를 공유합니다.",
+        type: 'experience',
+        author: "원격근무성공담",
+        createdAt: "2024-01-13T15:20:00Z",
+        tags: ["원격근무", "하이브리드", "직원만족"],
+        likeCount: 67,
+        commentCount: 23,
+        isExcellent: true,
+      }
+    ];
+
+    // Components
+    const { ChakraProvider, Box, Container, VStack, HStack, Text, Button, Heading, SimpleGrid } = ChakraUI;
+    const { BrowserRouter: Router, Routes, Route, Link, useNavigate } = ReactRouterDOM;
+
+    // Card Component
+    const Card = ({ type, id, title, summary, imageUrl, tags, createdAt, readTime, loungeType, isExcellent, likeCount, commentCount }) => {
+      const linkTo = type === 'story' ? `/story/${id}` : `/lounge/${id}`;
+      
+      return React.createElement(ChakraUI.Card, {
+        as: Link,
+        to: linkTo,
+        _hover: { textDecoration: 'none', transform: 'translateY(-2px)' }
+      }, 
+        React.createElement(ChakraUI.CardBody, { p: 0 },
+          imageUrl && React.createElement(ChakraUI.Image, {
+            src: imageUrl,
+            alt: title,
+            w: "full",
+            h: "200px",
+            objectFit: "cover"
+          }),
+          
+          React.createElement(VStack, { align: "stretch", p: 5, spacing: 3 },
+            React.createElement(Text, {
+              fontSize: "lg",
+              fontWeight: "600",
+              lineHeight: "1.4",
+              noOfLines: 2,
+              color: "gray.900"
+            }, title),
+            
+            summary && React.createElement(Text, {
+              fontSize: "sm",
+              color: "gray.600",
+              lineHeight: "1.5",
+              noOfLines: 3
+            }, summary),
+            
+            React.createElement(HStack, { spacing: 2, flexWrap: "wrap" },
+              tags.slice(0, 3).map((tag, index) => 
+                React.createElement(ChakraUI.Tag, { key: index, size: "sm", variant: "subtle" },
+                  React.createElement(ChakraUI.TagLabel, {}, tag)
+                )
+              )
+            ),
+            
+            React.createElement(HStack, { justify: "space-between", fontSize: "xs", color: "gray.500" },
+              React.createElement(Text, {}, new Date(createdAt).toLocaleDateString('ko-KR')),
+              type === 'story' && readTime && React.createElement(Text, {}, `${readTime}분 읽기`),
+              type === 'lounge' && React.createElement(HStack, { spacing: 3 },
+                likeCount !== undefined && React.createElement(Text, {}, `좋아요 ${likeCount}`),
+                commentCount !== undefined && React.createElement(Text, {}, `댓글 ${commentCount}`)
+              )
+            )
+          )
+        )
+      );
+    };
+
+    // Header Component  
+    const Header = () => {
+      return React.createElement(Box, { 
+        bg: "white", 
+        borderBottom: "1px", 
+        borderColor: "gray.100", 
+        position: "sticky", 
+        top: 0, 
+        zIndex: 100 
+      },
+        React.createElement(Container, { maxW: "1200px", px: { base: 4, md: 6 }, py: 3 },
+          React.createElement(HStack, { justify: "space-between", align: "center" },
+            React.createElement(HStack, { spacing: 8 },
+              React.createElement(Text, {
+                as: Link,
+                to: "/",
+                fontSize: "xl",
+                fontWeight: "700",
+                color: "brand.500",
+                _hover: { textDecoration: "none" }
+              }, "Plain"),
+              
+              React.createElement(HStack, { spacing: 1 },
+                React.createElement(Button, {
+                  as: Link,
+                  to: "/story",
+                  variant: "ghost",
+                  size: "sm"
+                }, "Story"),
+                React.createElement(Button, {
+                  as: Link,
+                  to: "/lounge", 
+                  variant: "ghost",
+                  size: "sm"
+                }, "Lounge")
+              )
+            )
+          )
+        )
+      );
+    };
+
+    // Footer Component
+    const Footer = () => {
+      return React.createElement(Box, { bg: "gray.50", mt: "auto" },
+        React.createElement(Container, { maxW: "1200px", py: 8 },
+          React.createElement(Text, { 
+            textAlign: "center", 
+            fontSize: "sm", 
+            color: "gray.500" 
+          }, "© 2024 Plain. All rights reserved.")
+        )
+      );
+    };
+
+    // Home Page
+    const Home = () => {
+      return React.createElement(Box, {},
+        // Hero Section
+        React.createElement(Box, { bg: "gray.50", py: { base: 16, md: 20 } },
+          React.createElement(Container, { maxW: "1200px" },
+            React.createElement(VStack, { spacing: 8, textAlign: "center" },
+              React.createElement(VStack, { spacing: 4 },
+                React.createElement(Heading, {
+                  as: "h1",
+                  fontSize: { base: "3xl", md: "4xl", lg: "5xl" },
+                  fontWeight: "700",
+                  color: "gray.900",
+                  lineHeight: "1.2"
+                }, 
+                  "인사담당자를 위한",
+                  React.createElement("br"),
+                  React.createElement(Text, { as: "span", color: "brand.500" }, "이야기와 라운지")
+                ),
+                
+                React.createElement(Text, {
+                  fontSize: { base: "lg", md: "xl" },
+                  color: "gray.600",
+                  maxW: "600px",
+                  lineHeight: "1.6"
+                }, 
+                  "전문가가 엄선한 인사 관련 콘텐츠와",
+                  React.createElement("br"),
+                  "동료들과 함께하는 실무 경험 공유"
+                )
+              ),
+
+              React.createElement(HStack, { spacing: 4 },
+                React.createElement(Button, { as: Link, to: "/story", size: "lg" }, "Story 둘러보기"),
+                React.createElement(Button, { as: Link, to: "/lounge", variant: "outline", size: "lg" }, "Lounge 참여하기")
+              )
+            )
+          )
+        ),
+
+        // Latest Stories
+        React.createElement(Container, { maxW: "1200px", py: { base: 12, md: 16 } },
+          React.createElement(VStack, { spacing: 8, align: "stretch" },
+            React.createElement(HStack, { justify: "space-between", align: "flex-end" },
+              React.createElement(VStack, { align: "flex-start", spacing: 2 },
+                React.createElement(Heading, { as: "h2", size: "lg", color: "gray.900" }, "최신 Story"),
+                React.createElement(Text, { color: "gray.600" }, "전문가가 엄선하고 검수한 인사 관련 콘텐츠")
+              )
+            ),
+
+            React.createElement(SimpleGrid, { columns: { base: 1, md: 2, lg: 3 }, spacing: 6 },
+              stories.map(story => 
+                React.createElement(Card, {
+                  key: story.id,
+                  type: "story",
+                  ...story
+                })
+              )
+            )
+          )
+        ),
+
+        // Hot Lounge
+        React.createElement(Box, { bg: "gray.50" },
+          React.createElement(Container, { maxW: "1200px", py: { base: 12, md: 16 } },
+            React.createElement(VStack, { spacing: 8, align: "stretch" },
+              React.createElement(HStack, { justify: "space-between", align: "flex-end" },
+                React.createElement(VStack, { align: "flex-start", spacing: 2 },
+                  React.createElement(Heading, { as: "h2", size: "lg", color: "gray.900" }, "Hot Lounge"),
+                  React.createElement(Text, { color: "gray.600" }, "인사담당자들의 생생한 경험과 노하우")
+                )
+              ),
+
+              React.createElement(SimpleGrid, { columns: { base: 1, md: 2, lg: 3 }, spacing: 6 },
+                loungePosts.filter(post => post.isExcellent || post.likeCount > 30).map(post => 
+                  React.createElement(Card, {
+                    key: post.id,
+                    type: "lounge",
+                    ...post
+                  })
+                )
+              )
+            )
+          )
+        )
+      );
+    };
+
+    // App Shell
+    const AppShell = ({ children }) => {
+      return React.createElement(ChakraUI.Flex, { direction: "column", minH: "100vh" },
+        React.createElement(Header),
+        React.createElement(Box, { flex: "1" }, children),
+        React.createElement(Footer)
+      );
+    };
+
+    // Main App
+    const App = () => {
+      return React.createElement(ChakraProvider, { theme },
+        React.createElement(Router, {},
+          React.createElement(AppShell, {},
+            React.createElement(Routes, {},
+              React.createElement(Route, { path: "/", element: React.createElement(Home) }),
+              React.createElement(Route, { path: "/story", element: React.createElement("div", {}, "Story List Page") }),
+              React.createElement(Route, { path: "/lounge", element: React.createElement("div", {}, "Lounge List Page") })
+            )
+          )
+        )
+      );
+    };
+
+    // 앱 마운트
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(React.createElement(App));
+
+    // 로딩 화면 제거
+    setTimeout(() => {
+      const loading = document.getElementById('loading');
+      if (loading) {
+        loading.style.display = 'none';
+      }
+      document.body.classList.add('app-loaded');
+    }, 1000);
+  </script>
+</body>
+</html>
