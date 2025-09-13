@@ -5,11 +5,24 @@ const webpack = require('webpack');
 
 module.exports = {
   entry: './app/javascript/main.jsx',
-  mode: 'development',
+  mode: process.env.NODE_ENV || 'development',
   output: {
     path: path.resolve(__dirname, 'dist'),
     filename: 'bundle.js',
     publicPath: '/',
+    clean: true, // 빌드 시 이전 파일들 정리
+  },
+  optimization: {
+    splitChunks: {
+      chunks: 'all',
+      cacheGroups: {
+        vendor: {
+          test: /[\\/]node_modules[\\/]/,
+          name: 'vendors',
+          chunks: 'all',
+        },
+      },
+    },
   },
   module: {
     rules: [

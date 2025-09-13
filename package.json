@@ -5,8 +5,9 @@
   "scripts": {
     "start": "npm run build && npx serve dist -s -l 3000",
     "start:prod": "npx serve dist -s -l 3000",
+    "start:light": "npx serve dist -s -l 3000 --single",
     "dev": "npx webpack-dev-server",
-    "build": "npx webpack --mode=production",
+    "build": "NODE_ENV=production npx webpack --mode=production",
     "build:gh-pages": "npm run sitemap && npx webpack --mode=production --output-public-path=/plaintest/",
     "lint": "npx eslint app/javascript --ext .js,.jsx,.ts,.tsx",
     "typecheck": "npx tsc --noEmit",
