@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "description": "Plain 정보/커뮤니티 사이트 프런트엔드",
   "scripts": {
-    "start": "npm run build && npx serve dist -s",
+    "start": "npm run build && npx serve dist -s -l 3000",
+    "start:prod": "npx serve dist -s -l 3000",
     "dev": "npx webpack-dev-server",
     "build": "npx webpack --mode=production",
     "build:gh-pages": "npm run sitemap && npx webpack --mode=production --output-public-path=/plaintest/",
