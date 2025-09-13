@@ -43,7 +43,7 @@ import {
 } from '@chakra-ui/react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { loungePosts } from '../mocks/lounge';
+import { sessionLoungeService, sessionStoryService, initializeData } from '../services/sessionDataService';
 import { DeleteIcon, StarIcon, EditIcon } from '@chakra-ui/icons';
 import dayjs from 'dayjs';
 
@@ -77,8 +77,15 @@ const AdminLounge: React.FC = () => {
     }
   }, [isAdmin, navigate]);
 
-  // Lounge 글 목록 (실제로는 서버에서 가져와야 함)
-  const [adminLoungePosts, setAdminLoungePosts] = useState(loungePosts);
+  // Lounge 글 목록 상태
+  const [adminLoungePosts, setAdminLoungePosts] = useState<any[]>([]);
+
+  // 데이터 로드
+  useEffect(() => {
+    initializeData();
+    const posts = sessionLoungeService.getAll();
+    setAdminLoungePosts(posts);
+  }, []);
 
   const handleDeletePost = (postId: number) => {
     setSelectedPostId(postId);
@@ -87,13 +94,30 @@ const AdminLounge: React.FC = () => {
 
   const confirmDeletePost = () => {
     if (selectedPostId) {
-      setAdminLoungePosts(prev => prev.filter(post => post.id !== selectedPostId));
-      
-      toast({
-        title: "Lounge 글이 삭제되었습니다",
-        status: "warning",
-        duration: 3000,
-      });
+      try {
+        // 세션 스토리지에서 글 삭제
+        const success = sessionLoungeService.delete(selectedPostId);
+        
+        if (success) {
+          // 로컬 상태에서 제거
+          setAdminLoungePosts(prev => prev.filter(post => post.id !== selectedPostId));
+          
+          toast({
+            title: "Lounge 글이 삭제되었습니다",
+            status: "warning",
+            duration: 3000,
+          });
+        } else {
+          throw new Error('삭제 실패');
+        }
+      } catch (error) {
+        toast({
+          title: "삭제 실패",
+          description: "Lounge 글 삭제 중 오류가 발생했습니다",
+          status: "error",
+          duration: 3000,
+        });
+      }
     }
     setSelectedPostId(null);
     onDeleteClose();
@@ -110,20 +134,53 @@ const AdminLounge: React.FC = () => {
 
   const confirmPromoteToStory = () => {
     if (selectedPost) {
-      // 실제로는 여기서 Story 작성 API를 호출해야 함
-      toast({
-        title: "Story로 승격 처리되었습니다",
-        description: `"${promoteForm.title}"이 Story 섹션에 게시됩니다`,
-        status: "success",
-        duration: 5000,
-      });
-      
-      // 승격된 글은 Lounge에서 제거하거나 표시를 변경할 수 있음
-      setAdminLoungePosts(prev => prev.map(post => 
-        post.id === selectedPost.id 
-          ? { ...post, isPromotedToStory: true }
-          : post
-      ));
+      try {
+        // 세션 스토리지에 새로운 Story 생성
+        const storyData = {
+          title: promoteForm.title,
+          content: promoteForm.content,
+          summary: selectedPost.summary || promoteForm.content.substring(0, 150) + '...',
+          author: selectedPost.author,
+          tags: ['라운지승격', selectedPost.type || 'general'],
+          readTime: Math.ceil(promoteForm.content.length / 500) || 5, // 대략적인 읽기 시간
+          imageUrl: `https://picsum.photos/800/600?random=${Date.now()}`,
+          isFromLounge: true,
+          originalAuthor: selectedPost.author,
+          isVerified: true,
+          likeCount: 0,
+          scrapCount: 0,
+          viewCount: 0,
+          commentCount: 0,
+          isPublished: true,
+        };
+        
+        const createdStory = sessionStoryService.create(storyData);
+        
+        if (createdStory) {
+          toast({
+            title: "✨ Story로 승격 완료!",
+            description: `"${promoteForm.title}"이 Story 섹션에 게시되었습니다`,
+            status: "success",
+            duration: 5000,
+          });
+          
+          // 승격된 글은 표시를 변경
+          setAdminLoungePosts(prev => prev.map(post => 
+            post.id === selectedPost.id 
+              ? { ...post, isPromotedToStory: true }
+              : post
+          ));
+        } else {
+          throw new Error('Story 생성 실패');
+        }
+      } catch (error) {
+        toast({
+          title: "승격 실패",
+          description: "Story 승격 처리 중 오류가 발생했습니다",
+          status: "error",
+          duration: 3000,
+        });
+      }
     }
     setSelectedPost(null);
     setPromoteForm({ title: '', content: '' });

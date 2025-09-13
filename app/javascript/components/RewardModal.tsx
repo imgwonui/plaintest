@@ -1,234 +1,143 @@
-import React, { useState } from 'react';
+import React, { useEffect } from 'react';
 import {
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalFooter,
-  ModalBody,
-  ModalCloseButton,
-  Button,
+  Box,
   Text,
   VStack,
-  HStack,
-  Badge,
   useColorMode,
-  Box,
-  Icon,
-  Divider,
+  keyframes,
   useToast,
 } from '@chakra-ui/react';
-import { StarIcon, CheckIcon } from '@chakra-ui/icons';
 
 interface RewardModalProps {
   isOpen: boolean;
   onClose: () => void;
   postTitle: string;
   likeCount: number;
-  rewardPoints: number;
 }
+
+// 애니메이션 키프레임
+const slideInUp = keyframes`
+  0% { 
+    opacity: 0;
+    transform: translate(-50%, 20px);
+  }
+  100% { 
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+`;
 
 const RewardModal: React.FC<RewardModalProps> = ({
   isOpen,
   onClose,
   postTitle,
-  likeCount,
-  rewardPoints = 500
+  likeCount
 }) => {
   const { colorMode } = useColorMode();
   const toast = useToast();
-  const [isRequesting, setIsRequesting] = useState(false);
-  const [rewardClaimed, setRewardClaimed] = useState(false);
 
-  const handleClaimReward = () => {
-    setRewardClaimed(true);
-    toast({
-      title: "🎉 보상을 받았습니다!",
-      description: `${rewardPoints}P가 지급되었습니다`,
-      status: "success",
-      duration: 4000,
-    });
-  };
+  // 3초 후 자동으로 닫기
+  useEffect(() => {
+    if (isOpen) {
+      const timer = setTimeout(() => {
+        onClose();
+      }, 3000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, onClose]);
 
-  const handleRequestStorySubmission = () => {
-    setIsRequesting(true);
-    
-    setTimeout(() => {
-      toast({
-        title: "📝 Story 기고 요청이 전송되었습니다",
-        description: "에디터 검토 후 연락드리겠습니다",
-        status: "success",
-        duration: 5000,
-      });
-      setIsRequesting(false);
-      onClose();
-    }, 1500);
-  };
+  if (!isOpen) return null;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="lg" isCentered>
-      <ModalOverlay bg="blackAlpha.600" backdropFilter="blur(4px)" />
-      <ModalContent 
-        bg={colorMode === 'dark' ? '#3c3c47' : 'white'}
-        border={colorMode === 'dark' ? '1px solid #4d4d59' : 'none'}
-        boxShadow="xl"
+    <>
+      {/* 오버레이 */}
+      <Box
+        position="fixed"
+        top="0"
+        left="0"
+        right="0"
+        bottom="0"
+        bg="blackAlpha.400"
+        zIndex={1000}
+        onClick={onClose}
+      />
+      
+      {/* 축하 팝업 */}
+      <Box
+        position="fixed"
+        top="50%"
+        left="50%"
+        transform="translate(-50%, -50%)"
+        zIndex={1001}
+        animation={`${slideInUp} 0.3s ease-out`}
+        maxW="400px"
+        w="90%"
         mx={4}
       >
-        <ModalHeader 
-          color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}
+        <Box
+          bg={colorMode === 'dark' ? '#3c3c47' : 'white'}
+          border={colorMode === 'dark' ? '1px solid #4d4d59' : '1px solid #e4e4e5'}
+          borderRadius="xl"
+          boxShadow="2xl"
+          p={6}
           textAlign="center"
-          pb={2}
         >
-          🎊 축하합니다!
-        </ModalHeader>
-        <ModalCloseButton color={colorMode === 'dark' ? '#9e9ea4' : '#626269'} />
-        
-        <ModalBody>
-          <VStack spacing={6} align="stretch">
+          <VStack spacing={4}>
+            {/* 축하 이모지 */}
+            <Text fontSize="4xl" role="img" aria-label="축하">
+              🎉
+            </Text>
+            
             {/* 축하 메시지 */}
-            <Box 
-              textAlign="center" 
-              p={6} 
+            <VStack spacing={2}>
+              <Text
+                fontSize="xl"
+                fontWeight="bold"
+                color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}
+              >
+                축하해요!
+              </Text>
+              
+              <Text
+                fontSize="md"
+                color={colorMode === 'dark' ? '#c3c3c6' : '#4d4d59'}
+                textAlign="center"
+                lineHeight="1.6"
+              >
+                글이 <Text as="span" color="brand.500" fontWeight="600">{likeCount}개 이상의 좋아요</Text>를 받아,<br />
+                <Text as="span" color="orange.500" fontWeight="600">Story에 기고될 수 있게</Text> 됐어요.
+              </Text>
+            </VStack>
+            
+            {/* 글 제목 */}
+            <Box
               bg={colorMode === 'dark' ? '#2c2c35' : '#f8f9fa'}
-              borderRadius="xl"
               border={colorMode === 'dark' ? '1px solid #4d4d59' : '1px solid #e4e4e5'}
+              borderRadius="lg"
+              p={3}
+              w="100%"
             >
-              <VStack spacing={4}>
-                <HStack>
-                  <Icon as={StarIcon} color="yellow.400" boxSize={6} />
-                  <Text fontSize="xl" fontWeight="bold" color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}>
-                    좋아요 {likeCount}개 달성!
-                  </Text>
-                  <Icon as={StarIcon} color="yellow.400" boxSize={6} />
-                </HStack>
-                
-                <Text color={colorMode === 'dark' ? '#9e9ea4' : '#626269'} textAlign="center">
-                  <Text as="span" fontWeight="600" color="brand.500">"{postTitle}"</Text>
-                  <br />
-                  글이 좋아요 50개 이상을 받으셨어요!
-                </Text>
-              </VStack>
+              <Text
+                fontSize="sm"
+                color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}
+                noOfLines={2}
+              >
+                "{postTitle}"
+              </Text>
             </Box>
-
-            <Divider />
-
-            {/* 보상 섹션 */}
-            <VStack spacing={4}>
-              <Text fontSize="lg" fontWeight="600" color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}>
-                🎁 보상 혜택
-              </Text>
-              
-              <HStack 
-                p={4} 
-                bg={colorMode === 'dark' ? '#2c2c35' : '#f0fff4'}
-                borderRadius="lg"
-                border="1px solid"
-                borderColor={colorMode === 'dark' ? '#4d4d59' : '#9AE6B4'}
-                w="100%"
-                justify="space-between"
-              >
-                <HStack>
-                  <Text fontSize="2xl">💰</Text>
-                  <VStack spacing={0} align="start">
-                    <Text fontWeight="600" color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}>
-                      마일리지 보상
-                    </Text>
-                    <Text fontSize="sm" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
-                      우수글 작성 보상
-                    </Text>
-                  </VStack>
-                </HStack>
-                
-                <VStack spacing={0} align="end">
-                  <Badge colorScheme="green" fontSize="lg" px={3} py={1}>
-                    +{rewardPoints}P
-                  </Badge>
-                </VStack>
-              </HStack>
-
-              {!rewardClaimed && (
-                <Button
-                  onClick={handleClaimReward}
-                  colorScheme="green"
-                  size="lg"
-                  w="100%"
-                  leftIcon={<CheckIcon />}
-                >
-                  보상 받기
-                </Button>
-              )}
-
-              {rewardClaimed && (
-                <Box 
-                  p={3} 
-                  bg={colorMode === 'dark' ? '#2d5016' : '#C6F6D5'}
-                  borderRadius="lg"
-                  w="100%"
-                  textAlign="center"
-                >
-                  <HStack justify="center">
-                    <CheckIcon color="green.500" />
-                    <Text color={colorMode === 'dark' ? '#9AE6B4' : '#2F855A'} fontWeight="600">
-                      보상을 받았습니다!
-                    </Text>
-                  </HStack>
-                </Box>
-              )}
-            </VStack>
-
-            <Divider />
-
-            {/* Story 기고 요청 섹션 */}
-            <VStack spacing={4}>
-              <Text fontSize="lg" fontWeight="600" color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}>
-                📚 Story 기고 기회
-              </Text>
-              
-              <Box 
-                p={4} 
-                bg={colorMode === 'dark' ? '#2c2c35' : '#fff7ed'}
-                borderRadius="lg"
-                border="1px solid"
-                borderColor={colorMode === 'dark' ? '#4d4d59' : '#FBD38D'}
-                w="100%"
-              >
-                <VStack spacing={3}>
-                  <Text textAlign="center" color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}>
-                    우수한 글을 Story 섹션에 기고해보세요!
-                  </Text>
-                  <Text fontSize="sm" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'} textAlign="center">
-                    • 에디터가 검토 후 Story로 발행<br />
-                    • 더 많은 독자에게 노출<br />
-                    • 추가 마일리지 보상
-                  </Text>
-                </VStack>
-              </Box>
-            </VStack>
+            
+            {/* 자동 닫힘 안내 */}
+            <Text
+              fontSize="xs"
+              color={colorMode === 'dark' ? '#7e7e87' : '#9e9ea4'}
+            >
+              잠시 후 자동으로 닫힙니다
+            </Text>
           </VStack>
-        </ModalBody>
-
-        <ModalFooter>
-          <HStack spacing={3} w="100%">
-            <Button 
-              variant="outline" 
-              onClick={onClose}
-              flex={1}
-            >
-              나중에
-            </Button>
-            <Button
-              colorScheme="brand"
-              onClick={handleRequestStorySubmission}
-              isLoading={isRequesting}
-              loadingText="요청 중..."
-              flex={2}
-            >
-              Story 기고 요청하기
-            </Button>
-          </HStack>
-        </ModalFooter>
-      </ModalContent>
-    </Modal>
+        </Box>
+      </Box>
+    </>
   );
 };
 

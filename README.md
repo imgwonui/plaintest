@@ -27,7 +27,9 @@ Plain은 인사담당자들을 위한 정보 공유와 커뮤니티 플랫폼입
 - **UI Framework**: Chakra UI v2.8.2
 - **Router**: React Router Dom v6
 - **Build Tool**: Webpack 5
-- **Backend**: Ruby on Rails (API 연동 준비, 현재는 목업 데이터)
+- **Backend**: Supabase (준비 완료)
+- **State Management**: Session Storage (API 연결 전 임시)
+- **Data**: 목업 데이터 제거 완료, API 연결 준비 완료
 
 ## 🎨 디자인 시스템
 
@@ -51,7 +53,8 @@ app/javascript/
 │   ├── StoryList.tsx   # Story 목록
 │   ├── LoungeList.tsx  # Lounge 목록
 │   └── ...
-├── mocks/              # 목업 데이터
+├── services/           # API 서비스 및 데이터 관리
+├── types/              # TypeScript 타입 정의
 ├── theme/              # Chakra UI 테마 설정
 ├── utils/              # 유틸리티 함수
 └── main.jsx           # 앱 진입점
@@ -100,12 +103,24 @@ npm run build
 - `/lounge` - Lounge 목록, 상세, 글쓰기
 - `/admin` - 관리자 대시보드
 
-## 🔧 향후 개발 계획
+## 🔧 개발 현황
 
-- [ ] Ruby on Rails API 연동
-- [ ] 사용자 인증 시스템
+### ✅ 완료된 작업
+- [x] 목업 데이터 완전 제거
+- [x] 세션 스토리지 기반 데이터 관리
+- [x] API 서비스 레이어 구축
+- [x] TypeScript 타입 정의 완료
+- [x] Supabase 클라이언트 설정
+- [x] 모든 CRUD 기능 (글작성, 댓글, 좋아요, 스크랩)
+- [x] 리치 텍스트 에디터 (이미지 드래그 앤 드롭)
+- [x] 반응형 디자인 및 다크모드
+
+### 🚀 다음 단계 (API 연결 준비 완료)
+- [ ] 실제 데이터베이스 스키마 생성
+- [ ] API 엔드포인트 구현 
+- [ ] 사용자 인증 시스템 연결
 - [ ] 실시간 알림 기능
-- [ ] 이미지 업로드 기능
+- [ ] 파일 업로드 시스템
 - [ ] 검색 기능 고도화
 - [ ] PWA 지원
 

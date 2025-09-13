@@ -38,14 +38,77 @@ import {
 } from '@chakra-ui/react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { stories } from '../mocks/stories';
-import { loungePosts } from '../mocks/lounge';
+import { sessionStoryService, sessionLoungeService, sessionUserService, sessionCommentService, initializeData, getDataStats } from '../services/sessionDataService';
 
 const AdminDashboard: React.FC = () => {
   const { colorMode } = useColorMode();
   const { user, isAdmin } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
+  const [stories, setStories] = useState<any[]>([]);
+  const [loungePosts, setLoungePosts] = useState<any[]>([]);
+  const [stats, setStats] = useState<any>(null);
+  const [recentActivities, setRecentActivities] = useState<any[]>([]);
+
+  // 세션 데이터 로드 및 통계 계산
+  useEffect(() => {
+    initializeData();
+    const loadedStories = sessionStoryService.getAll();
+    const loadedPosts = sessionLoungeService.getAll();
+    const allUsers = sessionUserService.getAllUsers();
+    const allComments = sessionCommentService.getAll();
+    const dataStats = getDataStats();
+    
+    setStories(loadedStories);
+    setLoungePosts(loadedPosts);
+    
+    // 실제 데이터 기반 통계 계산
+    const now = new Date();
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const thisWeekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    
+    const thisMonthStories = loadedStories.filter(story => 
+      new Date(story.createdAt) >= thisMonthStart
+    ).length;
+    
+    const thisMonthPosts = loadedPosts.filter(post => 
+      new Date(post.createdAt) >= thisMonthStart
+    ).length;
+    
+    // 댓글과 글 작성자들을 기반으로 사용자 수 추정
+    const storyAuthors = [...new Set(loadedStories.map(story => story.author))];
+    const postAuthors = [...new Set(loadedPosts.map(post => post.author))];
+    const commentAuthors = [...new Set(allComments.map(comment => comment.author))];
+    const allAuthors = [...new Set([...storyAuthors, ...postAuthors, ...commentAuthors])];
+    
+    // 이번 주에 활동한 사용자 추정 (최근 댓글/글 작성자)
+    const recentActivity = [
+      ...loadedPosts.filter(post => new Date(post.createdAt) >= thisWeekStart),
+      ...allComments.filter(comment => new Date(comment.createdAt) >= thisWeekStart)
+    ];
+    const recentActiveAuthors = [...new Set(recentActivity.map(item => item.author))];
+    
+    const calculatedStats = {
+      totalUsers: Math.max(allAuthors.length, 10), // 최소 10명으로 설정
+      monthlyActiveUsers: Math.max(Math.floor(allAuthors.length * 0.6), 6), // 60% 추정 활성 사용자
+      totalStories: loadedStories.length,
+      totalLoungePosts: loadedPosts.length,
+      totalComments: allComments.length,
+      thisMonthStories,
+      thisMonthPosts,
+      recentSignups: recentActiveAuthors.length,
+      pendingStories: 0, // 실제 데이터에는 모든 스토리가 발행됨
+    };
+    
+    setStats(calculatedStats);
+  }, []);
+
+  // 최근 활동 데이터 계산 (stats와 stories/loungePosts가 모두 로드된 후)
+  useEffect(() => {
+    if (stats && stories.length > 0 && loungePosts.length > 0) {
+      setRecentActivities(getRecentActivities());
+    }
+  }, [stats, stories, loungePosts]);
 
   // 관리자가 아니면 홈으로 리다이렉트
   useEffect(() => {
@@ -54,28 +117,70 @@ const AdminDashboard: React.FC = () => {
     }
   }, [isAdmin, navigate]);
 
-  // 통계 데이터 (더 많은 지표 추가)
-  const [stats] = useState({
-    totalUsers: 1247,
-    monthlyActiveUsers: 523, // MAU
-    totalStories: stories.length,
-    totalLoungePosts: loungePosts.length,
-    thisMonthStories: stories.filter(story => 
-      new Date(story.createdAt) > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-    ).length,
-    pendingStories: 5,
-    recentSignups: 15,
-  });
+  // 최근 활동 데이터 생성 (실제 데이터 기반)
+  const getRecentActivities = () => {
+    if (!stats) return [];
+    
+    const activities = [];
+    
+    // 최근 스토리들
+    const recentStories = stories
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 3);
+    
+    recentStories.forEach(story => {
+      activities.push({
+        id: `story-${story.id}`,
+        type: 'story',
+        action: 'published',
+        title: story.title,
+        user: story.author,
+        time: getTimeAgo(story.createdAt)
+      });
+    });
+    
+    // 최근 라운지 글들
+    const recentPosts = loungePosts
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 2);
+    
+    recentPosts.forEach(post => {
+      activities.push({
+        id: `lounge-${post.id}`,
+        type: 'lounge',
+        action: 'posted',
+        title: post.title,
+        user: post.author,
+        time: getTimeAgo(post.createdAt)
+      });
+    });
+    
+    // 시간순 정렬
+    return activities
+      .sort((a, b) => {
+        const timeA = new Date(stories.find(s => s.id === parseInt(a.id.split('-')[1]))?.createdAt || 
+                               loungePosts.find(p => p.id === parseInt(a.id.split('-')[1]))?.createdAt || 0);
+        const timeB = new Date(stories.find(s => s.id === parseInt(b.id.split('-')[1]))?.createdAt || 
+                               loungePosts.find(p => p.id === parseInt(b.id.split('-')[1]))?.createdAt || 0);
+        return timeB.getTime() - timeA.getTime();
+      })
+      .slice(0, 5);
+  };
 
-  // 최근 활동 데이터
-  const [recentActivities] = useState([
-    { id: 1, type: 'story', action: 'published', title: '채용 프로세스 개선 사례', user: '김인사', time: '5분 전' },
-    { id: 2, type: 'lounge', action: 'posted', title: '면접관 교육은 어떻게 하시나요?', user: 'John Doe', time: '12분 전' },
-    { id: 3, type: 'user', action: 'joined', title: '새 사용자 가입', user: '박신입', time: '23분 전' },
-    { id: 4, type: 'story', action: 'pending', title: '스타트업 채용 경험담', user: '이대표', time: '1시간 전' },
-  ]);
+  const getTimeAgo = (dateString: string) => {
+    const now = new Date();
+    const date = new Date(dateString);
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    
+    if (diffMins < 60) return `${diffMins}분 전`;
+    if (diffHours < 24) return `${diffHours}시간 전`;
+    return `${diffDays}일 전`;
+  };
 
-  if (!isAdmin) {
+  if (!isAdmin || !stats) {
     return null;
   }
 
@@ -210,6 +315,25 @@ const AdminDashboard: React.FC = () => {
 
               <Button 
                 as={RouterLink} 
+                to="/admin/tags"
+                size="lg" 
+                h="80px" 
+                flexDirection="column" 
+                spacing={2}
+                bg={colorMode === 'dark' ? '#3c3c47' : 'white'}
+                border={colorMode === 'dark' ? '1px solid #4d4d59' : '1px solid #e4e4e5'}
+                color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}
+                _hover={{
+                  bg: colorMode === 'dark' ? '#4d4d59' : '#f8f9fa',
+                  transform: 'translateY(-2px)'
+                }}
+              >
+                <Text fontSize="2xl">🏷️</Text>
+                <Text fontSize="sm" fontWeight="500">태그 관리</Text>
+              </Button>
+
+              <Button 
+                as={RouterLink} 
                 to="/admin/analytics"
                 size="lg" 
                 h="80px" 
@@ -225,6 +349,25 @@ const AdminDashboard: React.FC = () => {
               >
                 <Text fontSize="2xl">📈</Text>
                 <Text fontSize="sm" fontWeight="500">통계 분석</Text>
+              </Button>
+
+              <Button 
+                as={RouterLink} 
+                to="/admin/levels"
+                size="lg" 
+                h="80px" 
+                flexDirection="column" 
+                spacing={2}
+                bg={colorMode === 'dark' ? '#3c3c47' : 'white'}
+                border={colorMode === 'dark' ? '1px solid #4d4d59' : '1px solid #e4e4e5'}
+                color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}
+                _hover={{
+                  bg: colorMode === 'dark' ? '#4d4d59' : '#f8f9fa',
+                  transform: 'translateY(-2px)'
+                }}
+              >
+                <Text fontSize="2xl">🏆</Text>
+                <Text fontSize="sm" fontWeight="500">레벨 관리</Text>
               </Button>
             </SimpleGrid>
           </GridItem>
@@ -313,7 +456,7 @@ const AdminDashboard: React.FC = () => {
               <StatLabel color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>총 Lounge 글 수</StatLabel>
               <StatNumber color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}>{stats.totalLoungePosts}</StatNumber>
               <StatHelpText color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
-                이번 달 +48 증가
+                이번 달 +{stats.thisMonthPosts} 증가
               </StatHelpText>
             </Stat>
           </SimpleGrid>

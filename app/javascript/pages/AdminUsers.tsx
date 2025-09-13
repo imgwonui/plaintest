@@ -46,6 +46,7 @@ import {
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { DeleteIcon, InfoIcon, WarningIcon } from '@chakra-ui/icons';
+import { sessionUserService, sessionStoryService, sessionLoungeService, sessionLikeService, initializeData } from '../services/sessionDataService';
 import dayjs from 'dayjs';
 
 interface User {
@@ -80,74 +81,70 @@ const AdminUsers: React.FC = () => {
     }
   }, [isAdmin, navigate]);
 
-  // 임시 사용자 데이터 (실제로는 서버에서 가져와야 함)
-  const [users, setUsers] = useState<User[]>([
-    {
-      id: 'kakao_123',
-      name: '김인사',
-      email: 'kim@example.com',
-      provider: 'kakao',
-      joinedAt: '2024-01-10T09:00:00Z',
-      lastActiveAt: '2024-01-15T14:30:00Z',
-      isActive: true,
-      storiesCount: 3,
-      loungePostsCount: 12,
-      totalLikes: 156,
-      status: 'active',
-    },
-    {
-      id: 'google_456',
-      name: 'John Doe',
-      email: 'john@example.com',
-      provider: 'google',
-      joinedAt: '2024-01-05T11:20:00Z',
-      lastActiveAt: '2024-01-14T16:45:00Z',
-      isActive: true,
-      storiesCount: 1,
-      loungePostsCount: 8,
-      totalLikes: 89,
-      status: 'active',
-    },
-    {
-      id: 'kakao_789',
-      name: '박신입',
-      email: 'park@example.com',
-      provider: 'kakao',
-      joinedAt: '2024-01-12T10:15:00Z',
-      lastActiveAt: '2024-01-13T09:30:00Z',
-      isActive: false,
-      storiesCount: 0,
-      loungePostsCount: 3,
-      totalLikes: 15,
-      status: 'inactive',
-    },
-    {
-      id: 'google_101',
-      name: '이대표',
-      email: 'lee@startup.com',
-      provider: 'google',
-      joinedAt: '2024-01-08T13:40:00Z',
-      lastActiveAt: '2024-01-15T18:20:00Z',
-      isActive: true,
-      storiesCount: 5,
-      loungePostsCount: 25,
-      totalLikes: 312,
-      status: 'active',
-    },
-  ]);
+  // 세션 스토리지에서 실제 사용자 데이터 로드
+  const [users, setUsers] = useState<User[]>([]);
+  const [stats, setStats] = useState<any>(null);
 
-  // 통계 계산
-  const stats = {
-    totalUsers: users.length,
-    activeUsers: users.filter(u => u.status === 'active').length,
-    inactiveUsers: users.filter(u => u.status === 'inactive').length,
-    bannedUsers: users.filter(u => u.status === 'banned').length,
-    newUsersThisWeek: users.filter(u => dayjs(u.joinedAt).isAfter(dayjs().subtract(7, 'day'))).length,
-    mau: users.filter(u => dayjs(u.lastActiveAt).isAfter(dayjs().subtract(30, 'day'))).length,
-    totalStories: users.reduce((sum, u) => sum + u.storiesCount, 0),
-    totalLoungePosts: users.reduce((sum, u) => sum + u.loungePostsCount, 0),
-    averageEngagement: Math.round(users.reduce((sum, u) => sum + u.totalLikes, 0) / users.length),
-  };
+  // 데이터 로드
+  useEffect(() => {
+    initializeData();
+    const allUsers = sessionUserService.getAllUsers();
+    const allStories = sessionStoryService.getAll();
+    const allLoungePosts = sessionLoungeService.getAll();
+    const allLikes = sessionLikeService.getAll();
+    
+    // 사용자별 통계 계산
+    const usersWithStats = allUsers.map(user => {
+      const userStories = allStories.filter(story => story.author === user.name);
+      const userLoungePosts = allLoungePosts.filter(post => post.author === user.name);
+      const userLikes = allLikes.filter(like => 
+        (like.postType === 'story' && allStories.find(s => s.id === like.postId)?.author === user.name) ||
+        (like.postType === 'lounge' && allLoungePosts.find(p => p.id === like.postId)?.author === user.name)
+      );
+      
+      // 최근 활동 확인 (30일 이내)
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const hasRecentActivity = 
+        userStories.some(story => new Date(story.createdAt) > thirtyDaysAgo) ||
+        userLoungePosts.some(post => new Date(post.createdAt) > thirtyDaysAgo);
+      
+      return {
+        id: user.id.toString(),
+        name: user.name,
+        email: user.email,
+        provider: user.provider || 'kakao' as const,
+        joinedAt: user.createdAt || user.joinedAt || new Date().toISOString(),
+        lastActiveAt: userStories.concat(userLoungePosts)
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]?.createdAt || user.createdAt || new Date().toISOString(),
+        isActive: hasRecentActivity,
+        storiesCount: userStories.length,
+        loungePostsCount: userLoungePosts.length,
+        totalLikes: userLikes.length,
+        status: (hasRecentActivity ? 'active' : 'inactive') as const,
+      };
+    });
+    
+    setUsers(usersWithStats);
+  }, []);
+
+  // 통계 계산 (users가 로드된 후)
+  useEffect(() => {
+    if (users.length > 0) {
+      const calculatedStats = {
+        totalUsers: users.length,
+        activeUsers: users.filter(u => u.status === 'active').length,
+        inactiveUsers: users.filter(u => u.status === 'inactive').length,
+        bannedUsers: users.filter(u => u.status === 'banned').length,
+        newUsersThisWeek: users.filter(u => dayjs(u.joinedAt).isAfter(dayjs().subtract(7, 'day'))).length,
+        mau: users.filter(u => dayjs(u.lastActiveAt).isAfter(dayjs().subtract(30, 'day'))).length,
+        totalStories: users.reduce((sum, u) => sum + u.storiesCount, 0),
+        totalLoungePosts: users.reduce((sum, u) => sum + u.loungePostsCount, 0),
+        averageEngagement: users.length > 0 ? Math.round(users.reduce((sum, u) => sum + u.totalLikes, 0) / users.length) : 0,
+      };
+      setStats(calculatedStats);
+    }
+  }, [users]);
 
   const handleDeleteUser = (userId: string) => {
     const userToDelete = users.find(u => u.id === userId);
@@ -160,14 +157,29 @@ const AdminUsers: React.FC = () => {
 
   const confirmDeleteUser = () => {
     if (selectedUserId) {
-      setUsers(prev => prev.filter(u => u.id !== selectedUserId));
-      
-      toast({
-        title: "사용자가 탈퇴 처리되었습니다",
-        description: `${selectedUser?.name}님이 서비스에서 탈퇴되었습니다`,
-        status: "warning",
-        duration: 3000,
-      });
+      try {
+        // 세션 스토리지에서 사용자 삭제 (실제로는 비활성화)
+        const success = sessionUserService.deleteUser(parseInt(selectedUserId));
+        
+        if (success) {
+          // 로컬 상태에서 제거
+          setUsers(prev => prev.filter(u => u.id !== selectedUserId));
+          
+          toast({
+            title: "사용자가 탈퇴 처리되었습니다",
+            description: `${selectedUser?.name}님이 서비스에서 탈퇴되었습니다`,
+            status: "warning",
+            duration: 3000,
+          });
+        }
+      } catch (error) {
+        toast({
+          title: "탈퇴 처리 실패",
+          description: "사용자 탈퇴 처리 중 오류가 발생했습니다",
+          status: "error",
+          duration: 3000,
+        });
+      }
     }
     setSelectedUserId(null);
     setSelectedUser(null);
@@ -175,6 +187,7 @@ const AdminUsers: React.FC = () => {
   };
 
   const handleBanUser = (userId: string) => {
+    // 실제로는 세션 스토리지에서 사용자 상태 업데이트
     setUsers(prev => prev.map(u => 
       u.id === userId 
         ? { ...u, status: 'banned' as const }
@@ -184,13 +197,14 @@ const AdminUsers: React.FC = () => {
     const targetUser = users.find(u => u.id === userId);
     toast({
       title: "사용자가 차단되었습니다",
-      description: `${targetUser?.name}님이 차단되었습니다`,
+      description: `${targetUser?.name}님이 차단되었습니다 (데모 모드)`,
       status: "error",
       duration: 3000,
     });
   };
 
   const handleUnbanUser = (userId: string) => {
+    // 실제로는 세션 스토리지에서 사용자 상태 업데이트
     setUsers(prev => prev.map(u => 
       u.id === userId 
         ? { ...u, status: 'active' as const }
@@ -200,7 +214,7 @@ const AdminUsers: React.FC = () => {
     const targetUser = users.find(u => u.id === userId);
     toast({
       title: "사용자 차단이 해제되었습니다",
-      description: `${targetUser?.name}님의 차단이 해제되었습니다`,
+      description: `${targetUser?.name}님의 차단이 해제되었습니다 (데모 모드)`,
       status: "success",
       duration: 3000,
     });
@@ -232,7 +246,7 @@ const AdminUsers: React.FC = () => {
     }
   };
 
-  if (!isAdmin) {
+  if (!isAdmin || !stats) {
     return null;
   }
 

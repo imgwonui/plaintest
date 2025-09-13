@@ -32,26 +32,34 @@ import {
   Tab,
   TabPanel,
 } from '@chakra-ui/react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { AddIcon, ViewIcon, HamburgerIcon } from '@chakra-ui/icons';
 import Card from '../components/Card';
 import CustomSelect from '../components/CustomSelect';
 import EmptyState from '../components/EmptyState';
 import { CardSkeletonGrid } from '../components/LoadingSpinner';
 import RewardModal from '../components/RewardModal';
+import SEOHead from '../components/SEOHead';
 import { useAuth } from '../contexts/AuthContext';
-import { loungePosts, LoungePost } from '../mocks/lounge';
-import { getPopularTags } from '../mocks/tags';
+// 타입은 API 타입으로 교체 예정
+type LoungePost = any;
+import { sessionLoungeService, sessionUserService, initializeData } from '../services/sessionDataService';
+import { getAllTags, getTagById } from '../data/tags';
+import TagSelector from '../components/TagSelector';
+import LevelBadge from '../components/UserLevel/LevelBadge';
+import { getUserDisplayLevel } from '../services/userLevelService';
 import dayjs from 'dayjs';
 
 type SortOption = 'latest' | 'popular';
 type PopularitySort = 'likes' | 'scraps';
-type TypeFilter = 'all' | 'question' | 'experience' | 'help';
+type TypeFilter = 'all' | 'question' | 'experience' | 'info' | 'free' | 'news' | 'advice' | 'recommend' | 'anonymous';
 type ViewMode = 'card' | 'list';
 
 const LoungeList: React.FC = () => {
   const { colorMode } = useColorMode();
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const toast = useToast();
   const { isOpen: isRewardOpen, onOpen: onRewardOpen, onClose: onRewardClose } = useDisclosure();
   
@@ -63,40 +71,101 @@ const LoungeList: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('card');
   const [rewardPost, setRewardPost] = useState<LoungePost | null>(null);
   const [activeTab, setActiveTab] = useState<'all' | 'popular'>('all');
+  const [loungePosts, setLoungePosts] = useState<LoungePost[]>([]);
 
-  // 좋아요 50개 이상인 글 체크
-  useEffect(() => {
-    const highLikePosts = loungePosts.filter(post => post.likeCount >= 50 && !post.rewardClaimed);
+  // 데이터 로드 함수
+  const loadPosts = () => {
+    initializeData();
+    const posts = sessionLoungeService.getAll();
+    console.log('라운지 포스트 로드:', posts.length, '개', posts.map(p => p.title));
+    
+    // 새로운 배열 객체 생성 (React 상태 업데이트 보장)
+    setLoungePosts([...posts]);
+    
+    // 좋아요 50개 이상인 글 체크
+    const highLikePosts = posts.filter(post => post.likeCount >= 50 && !post.rewardClaimed);
     if (highLikePosts.length > 0) {
       // 실제로는 사용자의 글인지 체크해야 함
       const userPost = highLikePosts[0]; // 임시로 첫 번째 글
       setRewardPost(userPost);
       setTimeout(() => onRewardOpen(), 1000); // 1초 후 모달 표시
     }
+  };
+
+  // 세션 데이터 로드 - 페이지 로드 시마다 실행
+  useEffect(() => {
+    console.log('LoungeList 컴포넌트 마운트됨');
+    loadPosts();
+  }, []);
+
+  // location 변경될 때마다 데이터 새로고침 (글 작성 후 돌아올 때 핵심!)
+  useEffect(() => {
+    console.log('라우팅 위치 변경됨:', location.pathname, location.state);
+    if (location.pathname === '/lounge') {
+      console.log('라운지 페이지 진입 - 새로고침 시작');
+      loadPosts();
+    }
+  }, [location.pathname, location.state?.timestamp]); // timestamp도 의존성에 추가
+
+  // onRewardOpen 변경될 때도 한 번 로드
+  useEffect(() => {
+    if (onRewardOpen) {
+      loadPosts();
+    }
   }, [onRewardOpen]);
 
-  const popularTags = getPopularTags(20).filter(tag => 
-    loungePosts.some(post => post.tags.includes(tag.name))
-  );
+  // 페이지가 포커스될 때마다 데이터 새로고침 (글 작성 후 돌아올 때)
+  useEffect(() => {
+    const handleFocus = () => {
+      console.log('페이지 포커스됨 - 데이터 새로고침');
+      setTimeout(() => loadPosts(), 100); // 약간의 딜레이 추가
+    };
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        console.log('페이지 가시성 변경됨 - 데이터 새로고침');
+        setTimeout(() => loadPosts(), 100); // 약간의 딜레이 추가
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
 
   const filteredAndSortedPosts = useMemo(() => {
+    console.log('🔍 필터링 시작:', {
+      전체포스트: loungePosts.length,
+      활성탭: activeTab,
+      타입필터: typeFilter,
+      선택된태그: selectedTags.length
+    });
+    
     let filtered = loungePosts;
 
     // 탭 필터링 (인기글은 좋아요 50개 이상)
     if (activeTab === 'popular') {
       filtered = filtered.filter(post => post.likeCount >= 50);
+      console.log('👍 인기글 필터 후:', filtered.length, '개');
     }
 
     // 타입 필터링
     if (typeFilter !== 'all') {
       filtered = filtered.filter(post => post.type === typeFilter);
+      console.log('📝 타입 필터 후:', filtered.length, '개');
     }
 
-    // 태그 필터링
+    // 태그 필터링  
     if (selectedTags.length > 0) {
       filtered = filtered.filter(post =>
-        selectedTags.some(tag => post.tags.includes(tag))
+        selectedTags.some(tagId => post.tags.includes(tagId))
       );
+      console.log('🏷️ 태그 필터 후:', filtered.length, '개');
     }
 
     // 정렬
@@ -116,17 +185,13 @@ const LoungeList: React.FC = () => {
       return scoreB - scoreA;
     });
 
+    console.log('✅ 최종 결과:', sorted.length, '개');
     return sorted;
-  }, [typeFilter, selectedTags, sortBy, popularitySort, activeTab]);
+  }, [loungePosts, typeFilter, selectedTags, sortBy, popularitySort, activeTab]); // loungePosts 의존성 추가!
 
-  const handleTagSelect = (tagName: string) => {
-    if (!selectedTags.includes(tagName)) {
-      setSelectedTags([...selectedTags, tagName]);
-    }
-  };
 
-  const handleTagRemove = (tagName: string) => {
-    setSelectedTags(selectedTags.filter(tag => tag !== tagName));
+  const handleTagRemove = (tagId: string) => {
+    setSelectedTags(selectedTags.filter(tag => tag !== tagId));
   };
 
   const clearAllFilters = () => {
@@ -149,15 +214,27 @@ const LoungeList: React.FC = () => {
 
   const getTypeFilterText = (type: TypeFilter) => {
     switch (type) {
-      case 'question': return '물어보고 싶어요';
-      case 'experience': return '이런 일이 있었어요';
-      case 'help': return '도움이 될 글이에요';
+      case 'question': return '질문/Q&A';
+      case 'experience': return '경험담/사연 공유';
+      case 'info': return '정보·팁 공유';
+      case 'free': return '자유글/잡담';
+      case 'news': return '뉴스에 한마디';
+      case 'advice': return '같이 고민해요';
+      case 'recommend': return '추천해주세요';
+      case 'anonymous': return '익명 토크';
       default: return '전체';
     }
   };
 
   return (
-    <Container maxW="1200px" py={8}>
+    <>
+      <SEOHead
+        title="Lounge - HR 담당자들의 소통공간"
+        description="인사담당자들이 고민을 나누고, 경험을 공유하며, 실무 팁을 교환하는 커뮤니티 공간. 질문하고 답하며 함께 성장해요."
+        keywords="HR 커뮤니티, 인사담당자 모임, 질문답변, 경험공유, 실무팁, 채용고민, 인사업무, 직장생활, Q&A"
+        url="/lounge"
+      />
+      <Container maxW="1200px" py={8}>
       <VStack spacing={8} align="stretch">
         {/* 헤더 */}
         <VStack spacing={6} align="center" py={12}>
@@ -206,7 +283,7 @@ const LoungeList: React.FC = () => {
               color: activeTab === 'all' ? 'brand.500' : (colorMode === 'dark' ? '#e4e4e5' : '#2c2c35')
             }}
           >
-            전체글 보기
+            전체글
           </Button>
           
           <Button
@@ -225,15 +302,7 @@ const LoungeList: React.FC = () => {
               color: activeTab === 'popular' ? 'brand.500' : (colorMode === 'dark' ? '#e4e4e5' : '#2c2c35')
             }}
           >
-            인기 글 모아보기
-            <Badge 
-              ml={2} 
-              colorScheme="red" 
-              variant="solid" 
-              fontSize="xs"
-            >
-              50+
-            </Badge>
+            인기글
           </Button>
         </HStack>
 
@@ -246,23 +315,6 @@ const LoungeList: React.FC = () => {
           shadow="sm"
         >
           <VStack spacing={5} align="stretch">
-            {/* 탭 설명 */}
-            {activeTab === 'popular' && (
-              <Box 
-                bg={colorMode === 'dark' ? 'rgba(220, 38, 38, 0.1)' : 'rgba(220, 38, 38, 0.05)'} 
-                border="1px solid" 
-                borderColor="red.200" 
-                borderRadius="lg" 
-                p={3}
-              >
-                <HStack>
-                  <Badge colorScheme="red" variant="solid">HOT</Badge>
-                  <Text fontSize="sm" color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}>
-                    좋아요 50개 이상을 받은 인기 글들만 모아서 보여드려요!
-                  </Text>
-                </HStack>
-              </Box>
-            )}
             
             {/* 정렬 및 버튼 */}
             <HStack justify="space-between" wrap="wrap" gap={4}>
@@ -270,18 +322,24 @@ const LoungeList: React.FC = () => {
                 <Text fontSize="sm" fontWeight="500" color={colorMode === 'dark' ? '#c3c3c6' : '#4d4d59'} minW="fit-content">
                   유형:
                 </Text>
-                <CustomSelect
-                  value={typeFilter}
-                  onChange={(value) => setTypeFilter(value as TypeFilter)}
-                  options={[
-                    { value: 'all', label: '전체' },
-                    { value: 'question', label: '물어보고 싶어요' },
-                    { value: 'experience', label: '이런 일이 있었어요' },
-                    { value: 'help', label: '도움이 될 글이에요' }
-                  ]}
-                  size="sm"
-                  maxW="160px"
-                />
+                <Box width="150px">
+                  <CustomSelect
+                    value={typeFilter}
+                    onChange={(value) => setTypeFilter(value as TypeFilter)}
+                    options={[
+                      { value: 'all', label: '전체' },
+                      { value: 'question', label: '질문/Q&A' },
+                      { value: 'experience', label: '경험담/사연 공유' },
+                      { value: 'info', label: '정보·팁 공유' },
+                      { value: 'free', label: '자유글/잡담' },
+                      { value: 'news', label: '뉴스에 한마디' },
+                      { value: 'advice', label: '같이 고민해요' },
+                      { value: 'recommend', label: '추천해주세요' },
+                      { value: 'anonymous', label: '익명 토크' }
+                    ]}
+                    size="sm"
+                  />
+                </Box>
                 
                 <Text fontSize="sm" fontWeight="500" color={colorMode === 'dark' ? '#c3c3c6' : '#4d4d59'} minW="fit-content">
                   정렬:
@@ -307,7 +365,7 @@ const LoungeList: React.FC = () => {
                       onChange={(value) => setPopularitySort(value as PopularitySort)}
                       options={[
                         { value: 'likes', label: '좋아요순' },
-                        { value: 'scraps', label: '스크랩순' }
+                        { value: 'scraps', label: '북마크순' }
                       ]}
                       size="sm"
                       maxW="120px"
@@ -386,56 +444,41 @@ const LoungeList: React.FC = () => {
                         </Badge>
                       </WrapItem>
                     )}
-                    {selectedTags.map((tag, index) => (
-                      <WrapItem key={tag}>
-                        <Tag 
-                          size="md" 
-                          variant="solid" 
-                          colorScheme="brand"
-                          style={{
-                            animationDelay: `${(typeFilter !== 'all' ? 1 : 0) + index * 0.1}s`,
-                            animation: 'fadeInUp 0.4s ease-out forwards'
-                          }}
-                        >
-                          <TagLabel>{tag}</TagLabel>
-                          <TagCloseButton onClick={() => handleTagRemove(tag)} />
-                        </Tag>
-                      </WrapItem>
-                    ))}
+                    {selectedTags.map((tagId, index) => {
+                      const tag = getTagById(tagId);
+                      return tag ? (
+                        <WrapItem key={tagId}>
+                          <Tag 
+                            size="md" 
+                            variant="solid" 
+                            colorScheme="brand"
+                            style={{
+                              animationDelay: `${(typeFilter !== 'all' ? 1 : 0) + index * 0.1}s`,
+                              animation: 'fadeInUp 0.4s ease-out forwards'
+                            }}
+                          >
+                            <TagLabel>{tag.name}</TagLabel>
+                            <TagCloseButton onClick={() => handleTagRemove(tagId)} />
+                          </Tag>
+                        </WrapItem>
+                      ) : null;
+                    })}
                   </Wrap>
                 </VStack>
               </Box>
             )}
 
-            {/* 인기 태그 */}
+            {/* 태그 선택 */}
             <VStack spacing={3} align="flex-start">
               <Text fontSize="sm" fontWeight="600" color={colorMode === 'dark' ? '#c3c3c6' : '#4d4d59'}>
-                인기 태그
+                태그 필터
               </Text>
-              <Wrap spacing={2}>
-                {popularTags.map((tag) => (
-                  <WrapItem key={tag.id}>
-                    <Tag
-                      size="sm"
-                      variant="outline"
-                      cursor="pointer"
-                      borderColor={colorMode === 'dark' ? '#626269' : '#9e9ea4'}
-                      color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}
-                      _hover={{ 
-                        bg: colorMode === 'dark' ? '#4d4d59' : '#e4e4e5',
-                        borderColor: 'brand.500',
-                        color: 'brand.500',
-                        transform: 'translateY(-1px)'
-                      }}
-                      onClick={() => handleTagSelect(tag.name)}
-                      opacity={selectedTags.includes(tag.name) ? 0.5 : 1}
-                      transition="all 0.2s ease"
-                    >
-                      <TagLabel>{tag.name}</TagLabel>
-                    </Tag>
-                  </WrapItem>
-                ))}
-              </Wrap>
+              <TagSelector
+                selectedTags={selectedTags}
+                onTagsChange={setSelectedTags}
+                maxTags={20}
+                placeholder="태그를 선택해서 필터링하세요"
+              />
             </VStack>
           </VStack>
         </Box>
@@ -472,6 +515,8 @@ const LoungeList: React.FC = () => {
                     likeCount={post.likeCount}
                     commentCount={post.commentCount}
                     scrapCount={post.scrapCount}
+                    author={post.author}
+                    authorId={post.author ? sessionUserService.getUserIdByName(post.author) : undefined}
                   />
                 ))}
               </SimpleGrid>
@@ -490,7 +535,7 @@ const LoungeList: React.FC = () => {
                       <Th color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>유형</Th>
                       <Th color={colorMode === 'dark' ? '#9e9ea4' : '#626269'} textAlign="center">좋아요</Th>
                       <Th color={colorMode === 'dark' ? '#9e9ea4' : '#626269'} textAlign="center">댓글</Th>
-                      <Th color={colorMode === 'dark' ? '#9e9ea4' : '#626269'} textAlign="center">스크랩</Th>
+                      <Th color={colorMode === 'dark' ? '#9e9ea4' : '#626269'} textAlign="center">북마크</Th>
                       <Th color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>작성일</Th>
                     </Tr>
                   </Thead>
@@ -518,7 +563,7 @@ const LoungeList: React.FC = () => {
                             bg: colorMode === 'dark' ? '#4d4d59' : '#f8f9fa',
                             cursor: 'pointer'
                           }}
-                          onClick={() => window.location.href = `/lounge/${post.id}`}
+                          onClick={() => navigate(`/lounge/${post.id}`)}
                         >
                           <Td>
                             <VStack spacing={1} align="start">
@@ -550,9 +595,19 @@ const LoungeList: React.FC = () => {
                           <Td>
                             <HStack>
                               <Avatar size="xs" name={post.author} />
-                              <Text fontSize="sm" color={colorMode === 'dark' ? '#c3c3c6' : '#4d4d59'}>
-                                {post.author}
-                              </Text>
+                              <VStack spacing={0} align="start">
+                                <Text fontSize="sm" color={colorMode === 'dark' ? '#c3c3c6' : '#4d4d59'}>
+                                  {post.author}
+                                </Text>
+                                {post.author && (
+                                  <LevelBadge 
+                                    level={getUserDisplayLevel(sessionUserService.getUserIdByName(post.author) || 1).level} 
+                                    size="xs" 
+                                    variant="subtle"
+                                    showIcon={true}
+                                  />
+                                )}
+                              </VStack>
                             </HStack>
                           </Td>
                           <Td>{getTypeBadge(post.type)}</Td>
@@ -593,12 +648,16 @@ const LoungeList: React.FC = () => {
             title={
               selectedTags.length > 0 || typeFilter !== 'all' 
                 ? "검색 결과가 없어요" 
+                : activeTab === 'popular'
+                ? "아직 인기글로 올라온 글이 없어요"
                 : "첫 번째 이야기를 들려주세요"
             }
             description={
               selectedTags.length > 0 || typeFilter !== 'all'
                 ? "다른 조건으로 검색해보거나 필터를 해제해보세요"
-                : "실전 사례일수록 더 좋아요. 민감정보는 가려주세요."
+                : activeTab === 'popular'
+                ? "좋아요를 50개 이상 받아야 인기글이 될 수 있어요."
+                : <Text color={colorMode === 'dark' ? '#c3c3c6' : '#626269'}>실전 사례일수록 더 좋아요. 민감정보는 가려주세요.</Text>
             }
             actionText={
               selectedTags.length > 0 || typeFilter !== 'all' 
@@ -608,7 +667,7 @@ const LoungeList: React.FC = () => {
             onAction={
               selectedTags.length > 0 || typeFilter !== 'all' 
                 ? clearAllFilters 
-                : () => window.location.href = '/lounge/new'
+                : () => navigate('/lounge/new')
             }
           />
         )}
@@ -624,7 +683,8 @@ const LoungeList: React.FC = () => {
           />
         )}
       </VStack>
-    </Container>
+      </Container>
+    </>
   );
 };
 

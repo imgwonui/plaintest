@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Box,
   Container,
@@ -14,25 +14,55 @@ import {
   WrapItem,
   Heading,
   useColorMode,
+  useToast,
 } from '@chakra-ui/react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { AddIcon } from '@chakra-ui/icons';
 import Card from '../components/Card';
 import CustomSelect from '../components/CustomSelect';
 import EmptyState from '../components/EmptyState';
 import { CardSkeletonGrid } from '../components/LoadingSpinner';
-import { stories } from '../mocks/stories';
-import { getPopularTags } from '../mocks/tags';
+import SEOHead from '../components/SEOHead';
+import { sessionStoryService, sessionUserService, initializeData } from '../services/sessionDataService';
+import { useAuth } from '../contexts/AuthContext';
+import { getAllTags, getTagById } from '../data/tags';
+import TagSelector from '../components/TagSelector';
 
 type SortOption = 'latest' | 'popular';
 
 const StoryList: React.FC = () => {
   const { colorMode } = useColorMode();
+  const { isAdmin } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const toast = useToast();
   const [sortBy, setSortBy] = useState<SortOption>('latest');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [stories, setStories] = useState<any[]>([]);
 
-  const popularTags = getPopularTags(20).filter(tag => 
-    stories.some(story => story.tags.includes(tag.name))
-  );
+  // 데이터 로드 함수
+  const loadStories = () => {
+    initializeData();
+    const allStories = sessionStoryService.getAll();
+    console.log('스토리 데이터 로드:', allStories.length, '개');
+    setStories([...allStories]); // 새로운 배열 객체 생성
+  };
+
+  // 세션 데이터 로드
+  useEffect(() => {
+    loadStories();
+  }, []);
+
+  // location 변경될 때마다 데이터 새로고침 (스토리 작성 후 돌아올 때)
+  useEffect(() => {
+    console.log('스토리 페이지 라우팅 변경됨:', location.pathname, location.state);
+    if (location.pathname === '/story') {
+      console.log('스토리 페이지 진입 - 새로고침 시작');
+      loadStories();
+    }
+  }, [location.pathname, location.state?.timestamp]);
+
 
   const filteredAndSortedStories = useMemo(() => {
     let filtered = stories;
@@ -40,7 +70,7 @@ const StoryList: React.FC = () => {
     // 태그 필터링
     if (selectedTags.length > 0) {
       filtered = stories.filter(story =>
-        selectedTags.some(tag => story.tags.includes(tag))
+        selectedTags.some(tagId => story.tags.includes(tagId))
       );
     }
 
@@ -49,31 +79,46 @@ const StoryList: React.FC = () => {
       if (sortBy === 'latest') {
         return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
       }
-      // 인기순은 읽기 시간과 태그 수를 기준으로 임시 구현
-      const scoreA = a.readTime + a.tags.length * 2;
-      const scoreB = b.readTime + b.tags.length * 2;
+      // 인기순은 조회수와 북마크 수를 기준으로
+      const scoreA = (a.viewCount || 0) + (a.scrapCount || 0) * 2;
+      const scoreB = (b.viewCount || 0) + (b.scrapCount || 0) * 2;
       return scoreB - scoreA;
     });
 
     return sorted;
-  }, [selectedTags, sortBy]);
+  }, [stories, selectedTags, sortBy]); // stories 의존성 추가
 
-  const handleTagSelect = (tagName: string) => {
-    if (!selectedTags.includes(tagName)) {
-      setSelectedTags([...selectedTags, tagName]);
-    }
-  };
 
-  const handleTagRemove = (tagName: string) => {
-    setSelectedTags(selectedTags.filter(tag => tag !== tagName));
+  const handleTagRemove = (tagId: string) => {
+    setSelectedTags(selectedTags.filter(tag => tag !== tagId));
   };
 
   const clearAllTags = () => {
     setSelectedTags([]);
   };
 
+  const handleWriteClick = () => {
+    if (!isAdmin) {
+      toast({
+        title: "관리자 권한이 필요합니다",
+        description: "스토리는 관리자만 작성할 수 있습니다",
+        status: "warning",
+        duration: 3000,
+      });
+      return;
+    }
+    // 관리자면 글쓰기 페이지로 이동 (Link 컴포넌트가 처리)
+  };
+
   return (
-    <Container maxW="1200px" py={8}>
+    <>
+      <SEOHead
+        title="Story - HR 전문가들의 실무 이야기"
+        description="인사담당자들의 실무 경험과 노하우를 담은 전문 아티클. 채용, 온보딩, 성과평가, 조직문화 등 HR업무의 모든 것을 전문가들과 함께 나누세요."
+        keywords="HR 전문, 인사관리, 실무경험, 채용노하우, 온보딩, 성과평가, 조직문화, 인사담당자, HR팁"
+        url="/story"
+      />
+      <Container maxW="1200px" py={8}>
       <VStack spacing={8} align="stretch">
         {/* 헤더 */}
         <VStack spacing={6} align="center" py={12}>
@@ -82,13 +127,29 @@ const StoryList: React.FC = () => {
               Story
             </Heading>
             <Text color={colorMode === 'dark' ? 'gray.300' : 'gray.600'} fontSize="xl" maxW="600px">
-              전문가가 엄선하고 검수한 인사 관련 콘텐츠
+              전문가가 엄선하고 검수한 인사 콘텐츠
             </Text>
             <Text color={colorMode === 'dark' ? 'gray.400' : 'gray.500'} fontSize="md" maxW="700px" lineHeight="1.6">
               실무에 바로 적용할 수 있는 전문 지식을 쉽게 이해할 수 있도록 정리해요. 
-              원하는 정보를 스크랩하고 저장하여 언제든지 다시 찾아볼 수 있어요.
+              원하는 정보를 북마크하고 저장하여 언제든지 다시 찾아볼 수 있어요.
             </Text>
           </VStack>
+          
+          {/* 관리자용 글쓰기 버튼 */}
+          {isAdmin && (
+            <HStack justify="flex-end" w="100%">
+              <Button 
+                as={Link}
+                to="/story/new"
+                leftIcon={<AddIcon />}
+                size="lg"
+                px={8}
+                onClick={handleWriteClick}
+              >
+                스토리 작성
+              </Button>
+            </HStack>
+          )}
         </VStack>
 
         {/* 필터 및 태그 카드 */}
@@ -153,56 +214,41 @@ const StoryList: React.FC = () => {
                     선택된 태그
                   </Text>
                   <Wrap spacing={2}>
-                    {selectedTags.map((tag, index) => (
-                      <WrapItem key={tag}>
-                        <Tag 
-                          size="md" 
-                          variant="solid" 
-                          colorScheme="brand"
-                          style={{
-                            animationDelay: `${index * 0.1}s`,
-                            animation: 'fadeInUp 0.4s ease-out forwards'
-                          }}
-                        >
-                          <TagLabel>{tag}</TagLabel>
-                          <TagCloseButton onClick={() => handleTagRemove(tag)} />
-                        </Tag>
-                      </WrapItem>
-                    ))}
+                    {selectedTags.map((tagId, index) => {
+                      const tag = getTagById(tagId);
+                      return tag ? (
+                        <WrapItem key={tagId}>
+                          <Tag 
+                            size="md" 
+                            variant="solid" 
+                            colorScheme="brand"
+                            style={{
+                              animationDelay: `${index * 0.1}s`,
+                              animation: 'fadeInUp 0.4s ease-out forwards'
+                            }}
+                          >
+                            <TagLabel>{tag.name}</TagLabel>
+                            <TagCloseButton onClick={() => handleTagRemove(tagId)} />
+                          </Tag>
+                        </WrapItem>
+                      ) : null;
+                    })}
                   </Wrap>
                 </VStack>
               </Box>
             )}
 
-            {/* 인기 태그 */}
+            {/* 태그 선택 */}
             <VStack spacing={3} align="flex-start">
               <Text fontSize="sm" fontWeight="600" color={colorMode === 'dark' ? '#c3c3c6' : '#4d4d59'}>
-                인기 태그
+                태그 필터
               </Text>
-              <Wrap spacing={2}>
-                {popularTags.map((tag) => (
-                  <WrapItem key={tag.id}>
-                    <Tag
-                      size="sm"
-                      variant="outline"
-                      cursor="pointer"
-                      borderColor={colorMode === 'dark' ? '#626269' : '#9e9ea4'}
-                      color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}
-                      _hover={{ 
-                        bg: colorMode === 'dark' ? '#4d4d59' : '#e4e4e5',
-                        borderColor: 'brand.500',
-                        color: 'brand.500',
-                        transform: 'translateY(-1px)'
-                      }}
-                      onClick={() => handleTagSelect(tag.name)}
-                      opacity={selectedTags.includes(tag.name) ? 0.5 : 1}
-                      transition="all 0.2s ease"
-                    >
-                      <TagLabel>{tag.name}</TagLabel>
-                    </Tag>
-                  </WrapItem>
-                ))}
-              </Wrap>
+              <TagSelector
+                selectedTags={selectedTags}
+                onTagsChange={setSelectedTags}
+                maxTags={20}
+                placeholder="태그를 선택해서 필터링하세요"
+              />
             </VStack>
           </VStack>
         </Box>
@@ -232,6 +278,8 @@ const StoryList: React.FC = () => {
                   tags={story.tags}
                   createdAt={story.createdAt}
                   readTime={story.readTime}
+                  author={story.author}
+                  authorId={story.author ? sessionUserService.getUserIdByName(story.author) : undefined}
                 />
               ))}
             </SimpleGrid>
@@ -249,7 +297,8 @@ const StoryList: React.FC = () => {
           />
         )}
       </VStack>
-    </Container>
+      </Container>
+    </>
   );
 };
 

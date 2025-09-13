@@ -1,5 +1,7 @@
 const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
+const CopyWebpackPlugin = require('copy-webpack-plugin');
+const webpack = require('webpack');
 
 module.exports = {
   entry: './app/javascript/main.jsx',
@@ -7,7 +9,7 @@ module.exports = {
   output: {
     path: path.resolve(__dirname, 'dist'),
     filename: 'bundle.js',
-    publicPath: '/plaintest/',
+    publicPath: '/',
   },
   module: {
     rules: [
@@ -39,6 +41,7 @@ module.exports = {
     extensions: ['.js', '.jsx', '.ts', '.tsx'],
     alias: {
       '@': path.resolve(__dirname, 'app/javascript'),
+      'data': path.resolve(__dirname, 'data'),
     },
   },
   devServer: {
@@ -50,8 +53,26 @@ module.exports = {
   },
   plugins: [
     new HtmlWebpackPlugin({
-      template: './app/views/pages/root.html.erb',
+      template: './index.html',
       filename: 'index.html',
+    }),
+    new CopyWebpackPlugin({
+      patterns: [
+        {
+          from: 'public',
+          to: '.',
+          globOptions: {
+            ignore: ['**/.DS_Store']
+          }
+        }
+      ]
+    }),
+    new webpack.DefinePlugin({
+      'process.env': {
+        NODE_ENV: JSON.stringify('development'),
+        REACT_APP_SUPABASE_URL: JSON.stringify(process.env.REACT_APP_SUPABASE_URL || ''),
+        REACT_APP_SUPABASE_ANON_KEY: JSON.stringify(process.env.REACT_APP_SUPABASE_ANON_KEY || ''),
+      },
     }),
   ],
 };

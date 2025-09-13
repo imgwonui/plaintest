@@ -19,27 +19,29 @@ import {
   IconButton,
   Tooltip,
 } from '@chakra-ui/react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
-import { StarIcon, AttachmentIcon, ExternalLinkIcon, LinkIcon } from '@chakra-ui/icons';
+import { StarIcon, AttachmentIcon, ExternalLinkIcon, LinkIcon, EditIcon, DeleteIcon } from '@chakra-ui/icons';
 import Card from '../components/Card';
 import { CommentList, CommentForm } from '../components/Comment';
 import EmptyState from '../components/EmptyState';
 import AdminHint from '../components/AdminHint';
+import SEOHead from '../components/SEOHead';
+import { ArticleJsonLd, BreadcrumbJsonLd } from '../components/JsonLd';
 import { useAuth } from '../contexts/AuthContext';
-import { stories } from '../mocks/stories';
-import { comments } from '../mocks/comments';
+import { sessionStoryService, sessionCommentService, sessionScrapService, sessionLikeService, sessionUserService, initializeData } from '../services/sessionDataService';
 import { formatDate } from '../utils/format';
+import { getTagById } from '../data/tags';
 
 const StoryDetail: React.FC = () => {
   const { colorMode } = useColorMode();
-  const { user } = useAuth();
+  const { user, isLoggedIn } = useAuth();
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const storyId = parseInt(id || '0');
   
-  const [storyComments, setStoryComments] = useState(
-    comments.filter(c => c.postId === storyId && c.postType === 'story')
-  );
+  const [story, setStory] = useState<any>(null);
+  const [storyComments, setStoryComments] = useState<any[]>([]);
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
   const [isBookmarked, setIsBookmarked] = useState(false);
@@ -50,44 +52,165 @@ const StoryDetail: React.FC = () => {
   const contentRef = useRef<HTMLDivElement>(null);
   const toast = useToast();
 
-  const story = stories.find(s => s.id === storyId);
+  // 세션 데이터 로드
+  useEffect(() => {
+    initializeData();
+    const foundStory = sessionStoryService.getById(storyId);
+    if (foundStory) {
+      console.log('🔍 스토리 로드됨:', foundStory.title);
+      console.log('🔍 검수 배지 정보:', {
+        isVerified: foundStory.isVerified,
+        verificationBadge: foundStory.verificationBadge
+      });
+      setStory(foundStory);
+      setLikeCount(foundStory.likeCount || 0);
+      setScrapCount(foundStory.scrapCount || 0);
+      
+      // 로그인된 사용자의 좋아요/북마크 상태 확인
+      if (isLoggedIn && user) {
+        // 좋아요 상태 확인
+        const isUserLiked = sessionLikeService.isLiked(user.id, storyId, 'story');
+        setIsLiked(isUserLiked);
+        
+        // 북마크 상태 확인
+        const isScraped = sessionScrapService.isScraped(user.id, storyId, 'story');
+        setIsBookmarked(isScraped);
+      } else {
+        setIsLiked(false);
+        setIsBookmarked(false);
+      }
+      
+      // 조회수 증가
+      sessionStoryService.incrementViewCount(storyId);
+      
+      // 댓글 로드 (계층구조)
+      const comments = sessionCommentService.getByPostHierarchical(storyId, 'story');
+      setStoryComments(comments);
+    }
+  }, [storyId, isLoggedIn, user]);
   
   const handleLike = () => {
-    const newLikeCount = isLiked ? likeCount - 1 : likeCount + 1;
-    setLikeCount(newLikeCount);
-    setIsLiked(!isLiked);
-    
-    toast({
-      title: isLiked ? "좋아요를 취소했습니다" : "좋아요를 눌렀습니다",
-      status: "success",
-      duration: 2000,
-    });
+    if (!isLoggedIn || !user) {
+      toast({
+        title: "로그인이 필요해요",
+        description: "로그인한 사용자만 좋아요를 누를 수 있어요",
+        status: "warning",
+        duration: 3000,
+      });
+      return;
+    }
+
+    if (isLiked) {
+      // 좋아요 해제
+      const success = sessionLikeService.remove(user.id, storyId, 'story');
+      if (success) {
+        setIsLiked(false);
+        setLikeCount(likeCount - 1);
+        toast({
+          title: "좋아요를 취소했습니다",
+          status: "success",
+          duration: 2000,
+        });
+      }
+    } else {
+      // 좋아요 추가
+      const success = sessionLikeService.add(user.id, storyId, 'story');
+      if (success) {
+        setIsLiked(true);
+        setLikeCount(likeCount + 1);
+        toast({
+          title: "좋아요를 눌렀습니다",
+          status: "success",
+          duration: 2000,
+        });
+      }
+    }
   };
 
   const handleBookmark = () => {
-    const newScrapCount = isBookmarked ? scrapCount - 1 : scrapCount + 1;
-    setScrapCount(newScrapCount);
-    setIsBookmarked(!isBookmarked);
-    
-    toast({
-      title: isBookmarked ? "북마크를 해제했습니다" : "북마크에 추가했습니다",
-      status: "success",
-      duration: 2000,
-    });
+    if (!isLoggedIn || !user) {
+      toast({
+        title: "로그인이 필요해요",
+        description: "로그인한 사용자만 북마크를 사용할 수 있어요",
+        status: "warning",
+        duration: 3000,
+      });
+      return;
+    }
+
+    if (isBookmarked) {
+      // 북마크 해제
+      const success = sessionScrapService.remove(user.id, storyId, 'story');
+      if (success) {
+        setIsBookmarked(false);
+        setScrapCount(scrapCount - 1);
+        toast({
+          title: "북마크를 해제했습니다",
+          status: "success",
+          duration: 2000,
+        });
+      }
+    } else {
+      // 북마크 추가
+      const success = sessionScrapService.add(user.id, storyId, 'story');
+      if (success) {
+        setIsBookmarked(true);
+        setScrapCount(scrapCount + 1);
+        toast({
+          title: "북마크에 추가했습니다",
+          status: "success",
+          duration: 2000,
+        });
+      }
+    }
   };
   
   // H1, H2 태그를 찾아서 내비게이션 메뉴 생성
   useEffect(() => {
     if (!story) return;
     
+    const matches = [];
+    const content = story.content;
+    const usedIds = new Set<string>(); // 중복 ID 방지
+    
+    // 마크다운 형태의 H1, H2 태그 찾기
     const h1Regex = /^# (.+)$/gm;
     const h2Regex = /^## (.+)$/gm;
-    const matches = [];
     
-    // H1 태그 찾기
+    // HTML 형태의 H1, H2 태그 찾기
+    const htmlH1Regex = /<h1[^>]*>([^<]+)<\/h1>/gi;
+    const htmlH2Regex = /<h2[^>]*>([^<]+)<\/h2>/gi;
+    
+    // ID 생성 및 중복 방지 함수 (한글 지원)
+    const generateUniqueId = (text: string) => {
+      // 한글, 영문, 숫자, 공백, 하이픈만 유지
+      let baseId = text.toLowerCase()
+        .replace(/[^\w\s\-가-힣]/g, '') // 한글 범위 추가
+        .replace(/\s+/g, '-') // 공백을 하이픈으로
+        .replace(/-+/g, '-') // 연속 하이픈 제거
+        .replace(/^-|-$/g, ''); // 시작/끝 하이픈 제거
+      
+      // 빈 ID인 경우 기본값 설정
+      if (!baseId) {
+        baseId = 'heading';
+      }
+      
+      let id = baseId;
+      let counter = 1;
+      
+      while (usedIds.has(id)) {
+        id = `${baseId}-${counter}`;
+        counter++;
+      }
+      
+      usedIds.add(id);
+      return id;
+    };
+    
+    // 마크다운 H1 태그 찾기
     let match;
-    while ((match = h1Regex.exec(story.content)) !== null) {
-      const id = match[1].toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
+    while ((match = h1Regex.exec(content)) !== null) {
+      const id = generateUniqueId(match[1]);
       matches.push({
         id,
         text: match[1],
@@ -96,9 +219,9 @@ const StoryDetail: React.FC = () => {
       });
     }
     
-    // H2 태그 찾기
-    story.content.replace(/^## (.+)$/gm, (match, text, index) => {
-      const id = text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
+    // 마크다운 H2 태그 찾기
+    content.replace(h2Regex, (match, text, index) => {
+      const id = generateUniqueId(text);
       matches.push({
         id,
         text,
@@ -107,6 +230,28 @@ const StoryDetail: React.FC = () => {
       });
       return match;
     });
+    
+    // HTML H1 태그 찾기
+    while ((match = htmlH1Regex.exec(content)) !== null) {
+      const id = generateUniqueId(match[1]);
+      matches.push({
+        id,
+        text: match[1],
+        level: 1,
+        index: match.index
+      });
+    }
+    
+    // HTML H2 태그 찾기
+    while ((match = htmlH2Regex.exec(content)) !== null) {
+      const id = generateUniqueId(match[1]);
+      matches.push({
+        id,
+        text: match[1],
+        level: 2,
+        index: match.index
+      });
+    }
     
     // 인덱스 순서로 정렬
     matches.sort((a, b) => a.index - b.index);
@@ -120,39 +265,36 @@ const StoryDetail: React.FC = () => {
       if (headings.length === 0) return;
       
       const scrollTop = window.pageYOffset;
-      const viewportHeight = window.innerHeight;
-      const scrollPosition = scrollTop + viewportHeight / 3; // 화면 상단 1/3 지점을 기준으로
+      const offset = 150; // 헤더 높이 고려한 오프셋
       
       let currentActiveId = '';
-      let closestDistance = Infinity;
+      let minDistance = Infinity;
       
-      // 각 헤딩의 위치를 확인하여 가장 가까운 것을 찾기
-      headings.forEach(heading => {
+      // 각 헤딩을 순회하며 가장 가까운 섹션 찾기
+      for (const heading of headings) {
         const element = document.getElementById(heading.id);
+        
         if (element) {
           const elementTop = element.getBoundingClientRect().top + scrollTop;
-          const distance = Math.abs(scrollPosition - elementTop);
+          const distance = Math.abs(scrollTop + offset - elementTop);
           
-          // 현재 스크롤 위치보다 위에 있으면서 가장 가까운 헤딩을 찾기
-          if (elementTop <= scrollPosition && distance < closestDistance) {
-            closestDistance = distance;
+          // 현재 스크롤 위치가 해당 섹션을 지났고, 가장 가까운 섹션이면 활성화
+          if (scrollTop + offset >= elementTop && distance < minDistance) {
             currentActiveId = heading.id;
-          }
-        }
-      });
-      
-      // 만약 아무것도 찾지 못했다면 첫 번째 헤딩을 활성화
-      if (!currentActiveId && headings.length > 0) {
-        const firstElement = document.getElementById(headings[0].id);
-        if (firstElement) {
-          const firstElementTop = firstElement.getBoundingClientRect().top + scrollTop;
-          if (scrollPosition >= firstElementTop - 200) {
-            currentActiveId = headings[0].id;
+            minDistance = distance;
           }
         }
       }
       
-      setActiveHeading(currentActiveId);
+      // 만약 아무 섹션도 활성화되지 않았다면 첫 번째 헤딩 활성화
+      if (!currentActiveId && headings.length > 0) {
+        currentActiveId = headings[0].id;
+      }
+      
+      // 현재 활성화된 헤딩과 다르면 업데이트 (중복 방지)
+      if (currentActiveId && currentActiveId !== activeHeading) {
+        setActiveHeading(currentActiveId);
+      }
     };
     
     // 디바운스 적용
@@ -174,12 +316,33 @@ const StoryDetail: React.FC = () => {
   
   const scrollToHeading = (id: string) => {
     const element = document.getElementById(id);
+    
     if (element) {
-      const yOffset = -120; // 헤더와 여백을 고려한 오프셋
-      const y = element.getBoundingClientRect().top + window.pageYOffset + yOffset;
+      const elementRect = element.getBoundingClientRect();
+      const elementTop = elementRect.top + window.pageYOffset;
+      
+      // 썸네일 높이(800px)와 헤더 높이를 고려한 오프셋
+      const thumbnailHeight = 800;
+      const headerHeight = 120;
+      const yOffset = -headerHeight;
+      
+      // 첫 번째 헤딩이 썸네일 영역 내에 있는지 확인
+      const isInThumbnailArea = elementTop < thumbnailHeight;
+      
+      let scrollTarget;
+      if (isInThumbnailArea) {
+        // 썸네일 영역 내의 헤딩은 썸네일 바로 아래로 스크롤
+        scrollTarget = thumbnailHeight - headerHeight;
+      } else {
+        // 일반적인 경우
+        scrollTarget = elementTop + yOffset;
+      }
+      
+      // 최소 스크롤 위치 보장 (맨 위로 올라가지 않게)
+      scrollTarget = Math.max(0, scrollTarget);
       
       window.scrollTo({
-        top: y,
+        top: scrollTarget,
         behavior: 'smooth'
       });
       
@@ -190,27 +353,68 @@ const StoryDetail: React.FC = () => {
     }
   };
   
-  const handleShare = () => {
+  const handleShare = async () => {
     if (navigator.share) {
-      navigator.share({
-        title: story?.title,
-        text: story?.summary,
-        url: window.location.href
-      });
+      try {
+        await navigator.share({
+          title: story?.title,
+          text: story?.summary,
+          url: window.location.href
+        });
+      } catch (error: any) {
+        // 사용자가 공유를 취소한 경우는 에러를 표시하지 않음
+        if (error.name !== 'AbortError') {
+          console.error('공유 실패:', error);
+        }
+      }
     } else {
-      navigator.clipboard.writeText(window.location.href);
-      toast({
-        title: '링크가 복사되었습니다',
-        status: 'success',
-        duration: 2000,
-      });
+      try {
+        await navigator.clipboard.writeText(window.location.href);
+        toast({
+          title: '링크가 복사되었습니다',
+          status: 'success',
+          duration: 2000,
+        });
+      } catch (error) {
+        toast({
+          title: '링크 복사에 실패했습니다',
+          status: 'error',
+          duration: 2000,
+        });
+      }
+    }
+  };
+  
+  const handleDelete = () => {
+    if (window.confirm('정말로 이 스토리를 삭제하시겠습니까?\n삭제된 스토리는 복구할 수 없습니다.')) {
+      try {
+        const success = sessionStoryService.delete(storyId);
+        if (success) {
+          toast({
+            title: '스토리가 삭제되었습니다',
+            status: 'success',
+            duration: 3000,
+          });
+          navigate('/story');
+        } else {
+          throw new Error('삭제 실패');
+        }
+      } catch (error) {
+        console.error('스토리 삭제 실패:', error);
+        toast({
+          title: '스토리 삭제 중 오류가 발생했습니다',
+          status: 'error',
+          duration: 3000,
+        });
+      }
     }
   };
   
   const relatedStories = useMemo(() => {
     if (!story) return [];
     
-    return stories
+    const allStories = sessionStoryService.getAll();
+    return allStories
       .filter(s => 
         s.id !== storyId && 
         s.tags.some(tag => story.tags.includes(tag))
@@ -221,22 +425,122 @@ const StoryDetail: React.FC = () => {
   const handleCommentSubmit = async (content: string, author?: string, password?: string) => {
     setIsSubmittingComment(true);
     
-    // 실제 구현에서는 API 호출
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    try {
+      // 실제 댓글 생성 - 세션 데이터에 저장
+      const newComment = sessionCommentService.create({
+        postId: storyId,
+        postType: 'story' as const,
+        author: user ? user.name : (author || "익명"),
+        content,
+        isGuest: !user,
+        guestPassword: password, // 실제로는 해시화해서 저장
+        authorVerified: user?.isVerified || false
+      });
+      
+      setStoryComments([...storyComments, newComment]);
+      
+      toast({
+        title: "댓글이 등록되었습니다",
+        status: "success",
+        duration: 2000,
+      });
+      
+    } catch (error) {
+      console.error('댓글 작성 실패:', error);
+      toast({
+        title: "댓글 작성 중 오류가 발생했습니다",
+        status: "error",
+        duration: 3000,
+      });
+    } finally {
+      setIsSubmittingComment(false);
+    }
+  };
+
+  const handleCommentReply = async (parentId: number, content: string, author?: string, password?: string) => {
+    setIsSubmittingComment(true);
     
-    const newComment = {
-      id: Date.now(),
-      postId: storyId,
-      postType: 'story' as const,
-      author: user ? user.name : (author || "익명"),
-      content,
-      createdAt: new Date().toISOString(),
-      isGuest: !user,
-      guestPassword: password // 실제로는 해시화해서 저장
-    };
-    
-    setStoryComments([...storyComments, newComment]);
-    setIsSubmittingComment(false);
+    try {
+      // 대댓글 생성 - 세션 데이터에 저장
+      const newReply = sessionCommentService.create({
+        postId: storyId,
+        postType: 'story' as const,
+        author: user ? user.name : (author || "익명"),
+        content,
+        isGuest: !user,
+        guestPassword: password,
+        authorVerified: user?.isVerified || false,
+        parentId: parentId // 부모 댓글 ID
+      });
+      
+      // 댓글 목록 새로고침 (계층구조)
+      const updatedComments = sessionCommentService.getByPostHierarchical(storyId, 'story');
+      setStoryComments(updatedComments);
+      
+      toast({
+        title: "답글이 등록되었습니다",
+        status: "success",
+        duration: 2000,
+      });
+      
+    } catch (error) {
+      console.error('답글 작성 실패:', error);
+      toast({
+        title: "답글 작성 중 오류가 발생했습니다",
+        status: "error",
+        duration: 3000,
+      });
+    } finally {
+      setIsSubmittingComment(false);
+    }
+  };
+
+  const handleCommentEdit = async (commentId: number, newContent: string, password?: string) => {
+    try {
+      const updatedComment = sessionCommentService.update(commentId, newContent, password);
+      
+      // 댓글 목록 새로고침 (계층구조)
+      const updatedComments = sessionCommentService.getByPostHierarchical(storyId, 'story');
+      setStoryComments(updatedComments);
+      
+      toast({
+        title: "댓글이 수정되었습니다",
+        status: "success",
+        duration: 2000,
+      });
+      
+    } catch (error: any) {
+      toast({
+        title: "댓글 수정 실패",
+        description: error.message || "댓글 수정 중 오류가 발생했습니다",
+        status: "error",
+        duration: 3000,
+      });
+    }
+  };
+
+  const handleCommentDelete = async (commentId: number, password?: string) => {
+    try {
+      sessionCommentService.delete(commentId, password);
+      
+      // 댓글 목록 새로고침 (계층구조)
+      const updatedComments = sessionCommentService.getByPostHierarchical(storyId, 'story');
+      setStoryComments(updatedComments);
+      
+      toast({
+        title: "댓글이 삭제되었습니다",
+        status: "success",
+        duration: 2000,
+      });
+      
+    } catch (error: any) {
+      toast({
+        title: "댓글 삭제 실패",
+        description: error.message || "댓글 삭제 중 오류가 발생했습니다",
+        status: "error",
+        duration: 3000,
+      });
+    }
   };
 
   if (!story) {
@@ -253,65 +557,140 @@ const StoryDetail: React.FC = () => {
   }
 
   return (
-    <Box>
-      <Flex maxW="1400px" mx="auto" py={8} px={4} gap={8}>
-        {/* 왼쪽 사이드바 - 목차 네비게이션 */}
-        <Box w="250px" flexShrink={0}>
-          <Box position="sticky" top="100px">
-            {headings.length > 0 && (
-              <VStack spacing={4} align="stretch">
-                <Text fontSize="sm" fontWeight="600" color={colorMode === 'dark' ? '#c3c3c6' : '#4d4d59'}>
-                  목차
-                </Text>
-                <VStack spacing={1} align="stretch">
-                  {headings.map((heading) => (
-                    <Button
-                      key={heading.id}
-                      variant="ghost"
-                      size="sm"
-                      justifyContent="flex-start"
-                      fontSize={heading.level === 1 ? "sm" : "xs"}
-                      fontWeight={activeHeading === heading.id ? "600" : (heading.level === 1 ? "500" : "400")}
-                      color={activeHeading === heading.id ? '#8B5CF6' : (colorMode === 'dark' ? '#9e9ea4' : '#626269')}
-                      bg={activeHeading === heading.id ? (colorMode === 'dark' ? 'rgba(139, 92, 246, 0.1)' : 'rgba(139, 92, 246, 0.05)') : 'transparent'}
-                      _hover={{
-                        bg: colorMode === 'dark' ? '#4d4d59' : '#e4e4e5',
-                        color: colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'
-                      }}
-                      onClick={() => scrollToHeading(heading.id)}
-                      px={heading.level === 1 ? 3 : 2}
-                      py={2}
-                      pl={heading.level === 1 ? 3 : 6}
-                      h="auto"
-                      borderRadius="md"
-                      ml={heading.level === 2 ? 2 : 0}
-                    >
-                      <Text noOfLines={2} textAlign="left" opacity={heading.level === 2 ? 0.8 : 1}>
-                        {heading.text}
-                      </Text>
-                    </Button>
-                  ))}
-                </VStack>
+    <>
+      <SEOHead
+        title={story.title}
+        description={story.summary || story.content?.substring(0, 150).replace(/[#*`]/g, '') + '...'}
+        keywords={`HR, 인사, ${story.tags?.join(', ')}, ${story.title.split(' ').slice(0, 3).join(', ')}`}
+        image={story.imageUrl}
+        url={`/story/${story.id}`}
+        type="article"
+        author={story.author}
+        publishedTime={story.createdAt}
+        tags={story.tags}
+      />
+      <ArticleJsonLd
+        title={story.title}
+        description={story.summary || story.content?.substring(0, 150).replace(/[#*`]/g, '') + '...'}
+        author={story.author}
+        datePublished={story.createdAt}
+        image={story.imageUrl}
+        keywords={story.tags}
+        url={`/story/${story.id}`}
+        readTime={story.readTime}
+      />
+      <BreadcrumbJsonLd
+        items={[
+          { name: 'Home', url: '/' },
+          { name: 'Story', url: '/story' },
+          { name: story.title, url: `/story/${story.id}` }
+        ]}
+      />
+      <Box>
+      {/* 썸네일 이미지 - 화면 전체 너비, 헤더 덮음 */}
+      {story.imageUrl && (
+        <Box 
+          position="absolute"
+          top="0"
+          left="0"
+          w="100vw" 
+          h="800px"
+          zIndex="50"
+        >
+          <Image
+            src={story.imageUrl}
+            alt={story.title}
+            w="100%"
+            h="100%"
+            objectFit="cover"
+          />
+          
+          {/* 글 제목과 요약 오버레이 */}
+          <Box
+            position="absolute"
+            bottom="0"
+            left="0"
+            right="0"
+            bg="linear-gradient(to top, rgba(0,0,0,0.8), rgba(0,0,0,0.4), transparent)"
+            p={12}
+            color="white"
+          >
+            <Container maxW="1200px">
+              <VStack spacing={4} align="flex-start">
+                <Heading 
+                  as="h1" 
+                  fontSize="56px" 
+                  fontWeight="700" 
+                  lineHeight="1.2"
+                  textShadow="2px 2px 4px rgba(0,0,0,0.6)"
+                >
+                  {story.title}
+                </Heading>
+                {story.summary && (
+                  <Text 
+                    fontSize="18px" 
+                    lineHeight="1.6"
+                    maxW="800px"
+                    textShadow="1px 1px 2px rgba(0,0,0,0.6)"
+                  >
+                    {story.summary}
+                  </Text>
+                )}
               </VStack>
-            )}
+            </Container>
           </Box>
         </Box>
+      )}
 
-        {/* 메인 콘텐츠 */}
-        <Box flex="1" maxW="800px">
-          <VStack spacing={8} align="stretch">
-          {/* 스토리 헤더 */}
-          <VStack spacing={6} align="stretch">
-            {story.imageUrl && (
-              <Image
-                src={story.imageUrl}
-                alt={story.title}
-                w="full"
-                h="300px"
-                objectFit="cover"
-                borderRadius="lg"
-              />
-            )}
+      <Box position="relative" zIndex="10" mt={story.imageUrl ? "800px" : "0"}>
+        <Flex maxW="1400px" mx="auto" py={8} px={4} gap={8}>
+          {/* 왼쪽 사이드바 - 목차 네비게이션 */}
+          <Box w="250px" flexShrink={0}>
+            <Box position="sticky" top="100px">
+              {headings.length > 0 && (
+                <VStack spacing={4} align="stretch">
+                  <Text fontSize="sm" fontWeight="600" color={colorMode === 'dark' ? '#c3c3c6' : '#4d4d59'}>
+                    목차
+                  </Text>
+                  <VStack spacing={1} align="stretch">
+                    {headings.map((heading) => (
+                      <Button
+                        key={heading.id}
+                        variant="ghost"
+                        size="sm"
+                        justifyContent="flex-start"
+                        fontSize={heading.level === 1 ? "sm" : "xs"}
+                        fontWeight={activeHeading === heading.id ? "600" : (heading.level === 1 ? "500" : "400")}
+                        color={activeHeading === heading.id ? '#8B5CF6' : (colorMode === 'dark' ? '#9e9ea4' : '#626269')}
+                        bg={activeHeading === heading.id ? (colorMode === 'dark' ? 'rgba(139, 92, 246, 0.1)' : 'rgba(139, 92, 246, 0.05)') : 'transparent'}
+                        _hover={{
+                          bg: colorMode === 'dark' ? '#4d4d59' : '#e4e4e5',
+                          color: colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'
+                        }}
+                        onClick={() => scrollToHeading(heading.id)}
+                        px={heading.level === 1 ? 3 : 2}
+                        py={2}
+                        pl={heading.level === 1 ? 3 : 6}
+                        h="auto"
+                        borderRadius="md"
+                        ml={heading.level === 2 ? 2 : 0}
+                      >
+                        <Text noOfLines={2} textAlign="left" opacity={heading.level === 2 ? 0.8 : 1}>
+                          {heading.text}
+                        </Text>
+                      </Button>
+                    ))}
+                  </VStack>
+                </VStack>
+              )}
+            </Box>
+          </Box>
+
+          {/* 메인 콘텐츠 */}
+          <Box flex="1" maxW="800px">
+            <VStack spacing={8} align="stretch">
+            {/* 스토리 헤더 */}
+            <VStack spacing={6} align="stretch">
             
             {/* 라운지 출처 배지 */}
             {story.isFromLounge && (
@@ -322,13 +701,38 @@ const StoryDetail: React.FC = () => {
             
             {story.isVerified && (
               <AdminHint type="success">
-                본 글은 (주)월급날에서 검수했어요.
+                {story.verificationBadge || "페이롤 아웃소싱 전문회사인 월급날에서 검수한 글이에요."}
               </AdminHint>
             )}
 
-            <Heading as="h1" size="xl" lineHeight="1.4" color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}>
-              {story.title}
-            </Heading>
+            <HStack justify="space-between" align="flex-start">
+              <Heading as="h1" size="xl" lineHeight="1.4" color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'} flex="1">
+                {story.title}
+              </Heading>
+              
+              {/* 관리자 수정/삭제 버튼 */}
+              {user?.isAdmin && (
+                <HStack spacing={3} flexShrink={0} ml={6}>
+                  <Button
+                    leftIcon={<EditIcon />}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate(`/story/${storyId}/edit`)}
+                  >
+                    수정하기
+                  </Button>
+                  <Button
+                    leftIcon={<DeleteIcon />}
+                    variant="outline"
+                    colorScheme="red"
+                    size="sm"
+                    onClick={() => handleDelete()}
+                  >
+                    삭제하기
+                  </Button>
+                </HStack>
+              )}
+            </HStack>
 
             <HStack spacing={4} fontSize="sm" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
               <Text>{story.author}</Text>
@@ -342,9 +746,10 @@ const StoryDetail: React.FC = () => {
               {story.tags.map((tag, index) => {
                 const tagColors = ['blue', 'green', 'purple', 'orange', 'teal', 'pink'];
                 const colorScheme = tagColors[index % tagColors.length];
+                const tagData = getTagById(tag);
                 return (
                   <Tag key={index} size="sm" variant="subtle" colorScheme={colorScheme}>
-                    <TagLabel>{tag}</TagLabel>
+                    <TagLabel>{tagData ? tagData.name : tag}</TagLabel>
                   </Tag>
                 );
               })}
@@ -414,25 +819,83 @@ const StoryDetail: React.FC = () => {
               },
             }}
             dangerouslySetInnerHTML={{
-              __html: story.content
-                .replace(/==(.*?)==/g, '<span style="background: rgba(63, 213, 153, 0.21); padding: 2px 4px; border-radius: 3px;">$1</span>')
-                .replace(/^# (.*)$/gm, (match, text) => {
-                  const id = text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
-                  return `<h1 id="${id}">${text}</h1>`;
-                })
-                .replace(/^## (.*)$/gm, (match, text) => {
-                  const id = text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
-                  return `<h2 id="${id}">${text}</h2>`;
-                })
-                .replace(/^### (.*)$/gm, '<h3>$1</h3>')
-                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                .replace(/\*(.*?)\*/g, '<em>$1</em>')
-                .replace(/~~(.*?)~~/g, '<del>$1</del>')
-                .replace(/\n\n/g, '</p><p>')
+              __html: (() => {
+                const content = story.content;
+                
+                // HTML 콘텐츠인지 확인 (WYSIWYG 에디터로 작성된 경우)
+                const isHTML = content.includes('<p>') || content.includes('<h1>') || content.includes('<span style=');
+                
+                // ID 생성 및 중복 방지 함수 (한글 지원)
+                const usedHtmlIds = new Set<string>();
+                const generateHtmlId = (text: string) => {
+                  // 한글, 영문, 숫자, 공백, 하이픈만 유지
+                  let baseId = text.toLowerCase()
+                    .replace(/[^\w\s\-가-힣]/g, '') // 한글 범위 추가
+                    .replace(/\s+/g, '-') // 공백을 하이픈으로
+                    .replace(/-+/g, '-') // 연속 하이픈 제거
+                    .replace(/^-|-$/g, ''); // 시작/끝 하이픈 제거
+                  
+                  // 빈 ID인 경우 기본값 설정
+                  if (!baseId) {
+                    baseId = 'heading';
+                  }
+                  
+                  let id = baseId;
+                  let counter = 1;
+                  
+                  while (usedHtmlIds.has(id)) {
+                    id = `${baseId}-${counter}`;
+                    counter++;
+                  }
+                  
+                  usedHtmlIds.add(id);
+                  return id;
+                };
+                
+                if (isHTML) {
+                  // HTML 콘텐츠 - H1, H2 태그에 ID 추가
+                  return content
+                    .replace(/background-color:\s*rgb\(254,\s*240,\s*138\)/g, 'background-color: #fef08a; color: #1f2937')
+                    .replace(/background-color:\s*rgb\(187,\s*247,\s*208\)/g, 'background-color: #bbf7d0; color: #1f2937')
+                    .replace(/background-color:\s*rgb\(191,\s*219,\s*254\)/g, 'background-color: #bfdbfe; color: #1f2937')
+                    .replace(/background-color:\s*rgb\(252,\s*231,\s*243\)/g, 'background-color: #fce7f3; color: #1f2937')
+                    .replace(/background-color:\s*rgb\(233,\s*213,\s*255\)/g, 'background-color: #e9d5ff; color: #1f2937')
+                    .replace(/<h1[^>]*>([^<]+)<\/h1>/gi, (match, text) => {
+                      const id = generateHtmlId(text);
+                      return `<h1 id="${id}">${text}</h1>`;
+                    })
+                    .replace(/<h2[^>]*>([^<]+)<\/h2>/gi, (match, text) => {
+                      const id = generateHtmlId(text);
+                      return `<h2 id="${id}">${text}</h2>`;
+                    });
+                } else {
+                  // 마크다운 콘텐츠면 변환
+                  return content
+                    .replace(/==(.*?)==/g, '<span style="background-color: #fef08a; color: #1f2937; padding: 2px 4px; border-radius: 3px;">$1</span>')
+                    .replace(/==green\[(.*?)\]==/g, '<span style="background-color: #bbf7d0; color: #1f2937; padding: 2px 4px; border-radius: 3px;">$1</span>')
+                    .replace(/==blue\[(.*?)\]==/g, '<span style="background-color: #bfdbfe; color: #1f2937; padding: 2px 4px; border-radius: 3px;">$1</span>')
+                    .replace(/==pink\[(.*?)\]==/g, '<span style="background-color: #fce7f3; color: #1f2937; padding: 2px 4px; border-radius: 3px;">$1</span>')
+                    .replace(/==purple\[(.*?)\]==/g, '<span style="background-color: #e9d5ff; color: #1f2937; padding: 2px 4px; border-radius: 3px;">$1</span>')
+                    .replace(/^# (.*)$/gm, (match, text) => {
+                      const id = generateHtmlId(text);
+                      return `<h1 id="${id}">${text}</h1>`;
+                    })
+                    .replace(/^## (.*)$/gm, (match, text) => {
+                      const id = generateHtmlId(text);
+                      return `<h2 id="${id}">${text}</h2>`;
+                    })
+                    .replace(/^### (.*)$/gm, '<h3>$1</h3>')
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                    .replace(/~~(.*?)~~/g, '<del>$1</del>')
+                    .replace(/\n\n/g, '</p><p>');
+                }
+              })()
                 .replace(/^/, '<p>')
                 .replace(/$/, '</p>')
             }}
           />
+
 
           {/* 좋아요 및 북마크 버튼 */}
           <HStack justify="center" spacing={4} py={4}>
@@ -470,44 +933,53 @@ const StoryDetail: React.FC = () => {
               isSubmitting={isSubmittingComment}
               isLoggedIn={!!user}
               currentUserName={user?.name || ''}
+              currentUserVerified={user?.isVerified || false}
             />
             
-            <CommentList comments={storyComments} />
+            <CommentList 
+              comments={storyComments} 
+              currentUser={user}
+              isLoggedIn={isLoggedIn}
+              onEdit={handleCommentEdit}
+              onDelete={handleCommentDelete}
+              onReply={handleCommentReply}
+            />
           </VStack>
-        </VStack>
-        </Box>
-
-        {/* 오른쪽 사이드바 - 공유 및 스크랩 */}
-        <Box w="80px" flexShrink={0}>
-          <Box position="sticky" top="100px">
-            <VStack spacing={4}>
-              <Tooltip label="공유하기" placement="left">
-                <IconButton
-                  aria-label="공유하기"
-                  icon={<ExternalLinkIcon />}
-                  variant="outline"
-                  colorScheme="gray"
-                  size="md"
-                  borderRadius="full"
-                  onClick={handleShare}
-                />
-              </Tooltip>
-              
-              <Tooltip label="북마크" placement="left">
-                <IconButton
-                  aria-label="북마크"
-                  icon={<AttachmentIcon />}
-                  variant={isBookmarked ? "solid" : "outline"}
-                  colorScheme={isBookmarked ? "yellow" : "gray"}
-                  size="md"
-                  borderRadius="full"
-                  onClick={handleBookmark}
-                />
-              </Tooltip>
             </VStack>
           </Box>
-        </Box>
-      </Flex>
+
+          {/* 오른쪽 사이드바 - 공유 및 북마크 */}
+          <Box w="80px" flexShrink={0}>
+            <Box position="sticky" top="100px">
+              <VStack spacing={4}>
+                <Tooltip label="공유하기" placement="left">
+                  <IconButton
+                    aria-label="공유하기"
+                    icon={<ExternalLinkIcon />}
+                    variant="outline"
+                    colorScheme="gray"
+                    size="md"
+                    borderRadius="full"
+                    onClick={handleShare}
+                  />
+                </Tooltip>
+                
+                <Tooltip label="북마크" placement="left">
+                  <IconButton
+                    aria-label="북마크"
+                    icon={<AttachmentIcon />}
+                    variant={isBookmarked ? "solid" : "outline"}
+                    colorScheme={isBookmarked ? "yellow" : "gray"}
+                    size="md"
+                    borderRadius="full"
+                    onClick={handleBookmark}
+                  />
+                </Tooltip>
+              </VStack>
+            </Box>
+          </Box>
+        </Flex>
+      </Box>
 
       {/* 관련 스토리 */}
       {relatedStories.length > 0 && (
@@ -530,6 +1002,8 @@ const StoryDetail: React.FC = () => {
                     tags={relatedStory.tags}
                     createdAt={relatedStory.createdAt}
                     readTime={relatedStory.readTime}
+                    author={relatedStory.author}
+                    authorId={relatedStory.author ? sessionUserService.getUserIdByName(relatedStory.author) : undefined}
                   />
                 ))}
               </SimpleGrid>
@@ -537,7 +1011,8 @@ const StoryDetail: React.FC = () => {
           </Container>
         </Box>
       )}
-    </Box>
+      </Box>
+    </>
   );
 };
 

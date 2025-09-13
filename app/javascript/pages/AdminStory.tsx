@@ -39,7 +39,7 @@ import {
 } from '@chakra-ui/react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { stories } from '../mocks/stories';
+import { sessionStoryService, initializeData } from '../services/sessionDataService';
 import { EditIcon, DeleteIcon, CheckIcon, TimeIcon } from '@chakra-ui/icons';
 import dayjs from 'dayjs';
 
@@ -72,56 +72,44 @@ const AdminStory: React.FC = () => {
     }
   }, [isAdmin, navigate]);
 
-  // 임시 관리자용 Story 데이터 (실제로는 서버에서 가져와야 함)
-  const [adminStories, setAdminStories] = useState<AdminStory[]>([
-    {
-      id: 1,
-      title: "채용 프로세스 개선 사례",
-      author: "김인사",
-      content: "채용 프로세스를 개선한 경험을 공유합니다...",
-      createdAt: "2024-01-15T10:30:00Z",
-      status: "pending",
-      isVerified: false,
-    },
-    {
-      id: 2,
-      title: "스타트업 초기 채용 전략",
-      author: "이대표",
-      content: "스타트업에서의 채용 경험담...",
-      createdAt: "2024-01-14T14:20:00Z",
-      status: "published",
-      isVerified: true,
-      publishedAt: "2024-01-14T15:00:00Z",
-    },
-    {
-      id: 3,
-      title: "면접관 교육 프로그램 도입기",
-      author: "박HR",
-      content: "면접관 교육을 도입한 과정...",
-      createdAt: "2024-01-13T09:15:00Z",
-      status: "draft",
-      isVerified: false,
-    },
-  ]);
+  // 세션 스토리지에서 실제 Story 데이터 로드
+  const [adminStories, setAdminStories] = useState<any[]>([]);
+
+  // 데이터 로드
+  useEffect(() => {
+    initializeData();
+    const stories = sessionStoryService.getAll();
+    setAdminStories(stories);
+  }, []);
 
   const handlePublishStory = (storyId: number) => {
-    setAdminStories(prev => prev.map(story => 
-      story.id === storyId 
-        ? { 
-            ...story, 
-            status: 'published' as const, 
-            isVerified: true, 
-            publishedAt: new Date().toISOString() 
-          }
-        : story
-    ));
+    try {
+      // 세션 스토리지에서 스토리 업데이트
+      const updatedStory = sessionStoryService.update(storyId, {
+        status: 'published',
+        isVerified: true,
+        publishedAt: new Date().toISOString()
+      });
 
-    toast({
-      title: "Story가 발행되었습니다",
-      description: "5분 내에 취소할 수 있습니다",
-      status: "success",
-      duration: 5000,
-    });
+      // 로컬 상태 업데이트
+      setAdminStories(prev => prev.map(story => 
+        story.id === storyId ? updatedStory : story
+      ));
+
+      toast({
+        title: "Story가 발행되었습니다",
+        description: "5분 내에 취소할 수 있습니다",
+        status: "success",
+        duration: 5000,
+      });
+    } catch (error) {
+      toast({
+        title: "발행 실패",
+        description: "Story 발행 중 오류가 발생했습니다",
+        status: "error",
+        duration: 3000,
+      });
+    }
   };
 
   const handleCancelStory = (storyId: number) => {
@@ -131,21 +119,31 @@ const AdminStory: React.FC = () => {
 
   const confirmCancelStory = () => {
     if (selectedStoryId) {
-      setAdminStories(prev => prev.map(story => 
-        story.id === selectedStoryId 
-          ? { 
-              ...story, 
-              status: 'cancelled' as const, 
-              cancelReason: "관리자에 의해 취소됨" 
-            }
-          : story
-      ));
+      try {
+        // 세션 스토리지에서 스토리 업데이트
+        const updatedStory = sessionStoryService.update(selectedStoryId, {
+          status: 'cancelled',
+          cancelReason: "관리자에 의해 취소됨"
+        });
 
-      toast({
-        title: "Story가 취소되었습니다",
-        status: "info",
-        duration: 3000,
-      });
+        // 로컬 상태 업데이트
+        setAdminStories(prev => prev.map(story => 
+          story.id === selectedStoryId ? updatedStory : story
+        ));
+
+        toast({
+          title: "Story가 취소되었습니다",
+          status: "info",
+          duration: 3000,
+        });
+      } catch (error) {
+        toast({
+          title: "취소 실패",
+          description: "Story 취소 중 오류가 발생했습니다",
+          status: "error",
+          duration: 3000,
+        });
+      }
     }
     setSelectedStoryId(null);
     onCancelClose();
@@ -158,35 +156,48 @@ const AdminStory: React.FC = () => {
 
   const confirmDeleteStory = () => {
     if (selectedStoryId) {
-      setAdminStories(prev => prev.filter(story => story.id !== selectedStoryId));
-      
-      toast({
-        title: "Story가 삭제되었습니다",
-        status: "warning",
-        duration: 3000,
-      });
+      try {
+        // 세션 스토리지에서 스토리 삭제
+        const success = sessionStoryService.delete(selectedStoryId);
+        
+        if (success) {
+          // 로컬 상태에서 제거
+          setAdminStories(prev => prev.filter(story => story.id !== selectedStoryId));
+          
+          toast({
+            title: "Story가 삭제되었습니다",
+            status: "warning",
+            duration: 3000,
+          });
+        } else {
+          throw new Error('삭제 실패');
+        }
+      } catch (error) {
+        toast({
+          title: "삭제 실패",
+          description: "Story 삭제 중 오류가 발생했습니다",
+          status: "error",
+          duration: 3000,
+        });
+      }
     }
     setSelectedStoryId(null);
     onDeleteClose();
   };
 
-  const getStatusBadge = (story: AdminStory) => {
-    switch (story.status) {
-      case 'draft':
-        return <Badge colorScheme="gray">초안</Badge>;
-      case 'pending':
-        return <Badge colorScheme="yellow">승인 대기</Badge>;
-      case 'published':
-        return <Badge colorScheme="green">발행됨</Badge>;
-      case 'cancelled':
-        return <Badge colorScheme="red">취소됨</Badge>;
-      default:
-        return null;
+  const getStatusBadge = (story: any) => {
+    // 실제 세션 스토리지 데이터는 기본적으로 발행된 상태
+    if (story.status === 'cancelled') {
+      return <Badge colorScheme="red">취소됨</Badge>;
+    } else if (story.publishedAt) {
+      return <Badge colorScheme="green">발행됨</Badge>;
+    } else {
+      return <Badge colorScheme="yellow">준비 중</Badge>;
     }
   };
 
-  const canCancel = (story: AdminStory) => {
-    if (story.status !== 'published' || !story.publishedAt) return false;
+  const canCancel = (story: any) => {
+    if (story.status === 'cancelled' || !story.publishedAt) return false;
     
     const publishedTime = new Date(story.publishedAt);
     const now = new Date();
@@ -286,18 +297,17 @@ const AdminStory: React.FC = () => {
                     </Td>
                     <Td>
                       <HStack spacing={2}>
-                        {story.status === 'pending' && (
-                          <Tooltip label="즉시 발행">
-                            <IconButton
-                              aria-label="Publish"
-                              icon={<CheckIcon />}
-                              size="sm"
-                              colorScheme="green"
-                              variant="outline"
-                              onClick={() => handlePublishStory(story.id)}
-                            />
-                          </Tooltip>
-                        )}
+                        {/* 편집 버튼 */}
+                        <Tooltip label="편집">
+                          <IconButton
+                            aria-label="Edit"
+                            icon={<EditIcon />}
+                            size="sm"
+                            colorScheme="blue"
+                            variant="outline"
+                            onClick={() => navigate(`/story/${story.id}/edit`)}
+                          />
+                        </Tooltip>
                         
                         {canCancel(story) && (
                           <Tooltip label="5분 내 취소 가능">

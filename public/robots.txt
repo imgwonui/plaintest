@@ -1,0 +1,78 @@
+# Plain HR Community - Robots.txt
+# 인사담당자를 위한 이야기와 라운지
+
+# 모든 검색엔진에 대한 기본 정책
+User-agent: *
+Allow: /
+
+# 크롤링 허용 디렉터리
+Allow: /story/
+Allow: /lounge/
+Allow: /about
+Allow: /sitemap.html
+Allow: /sitemap.xml
+
+# 크롤링 제한 디렉터리 (관리자 페이지, 개인 정보 등)
+Disallow: /admin/
+Disallow: /login
+Disallow: /profile
+Disallow: /settings
+Disallow: /scrap
+Disallow: /search
+Disallow: /*/edit
+Disallow: /*/new
+
+# 기술적 파일 제외
+Disallow: /dist/
+Disallow: /node_modules/
+Disallow: /*.js$
+Disallow: /*.css$
+Disallow: /*.map$
+
+# 구글봇 특별 설정
+User-agent: Googlebot
+Allow: /
+Crawl-delay: 1
+
+# 네이버 검색봇 설정
+User-agent: Yeti
+Allow: /
+Crawl-delay: 2
+
+# 다음 검색봇 설정  
+User-agent: Daumoa
+Allow: /
+Crawl-delay: 2
+
+# 빙 검색봇 설정
+User-agent: bingbot
+Allow: /
+Crawl-delay: 3
+
+# AI 크롤러 설정 (ChatGPT, Claude 등)
+User-agent: GPTBot
+Allow: /story/
+Allow: /lounge/
+Allow: /about
+Disallow: /admin/
+Disallow: /login
+
+User-agent: CCBot
+Allow: /story/
+Allow: /lounge/
+Allow: /about
+Disallow: /admin/
+Disallow: /login
+
+# 사이트맵 위치
+Sitemap: https://plain-hr.com/sitemap.xml
+Sitemap: https://plain-hr.com/sitemap.html
+
+# 크롤 속도 제한 (초당 요청 제한)
+Request-rate: 1/10s
+
+# 방문 시간 제한 (서버 부하 방지)
+Visit-time: 0600-2400
+
+# 호스트 명시
+Host: https://plain-hr.com

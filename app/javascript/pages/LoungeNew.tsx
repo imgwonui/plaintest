@@ -23,13 +23,18 @@ import {
 } from '@chakra-ui/react';
 import { useNavigate } from 'react-router-dom';
 import CustomSelect from '../components/CustomSelect';
-import RichTextEditor from '../components/RichTextEditor';
-import { getPopularTags } from '../mocks/tags';
+import WYSIWYGEditor from '../components/WYSIWYGEditor';
+// 태그는 API 연결 후 동적으로 로드 예정
+import { sessionLoungeService } from '../services/sessionDataService';
+import { useAuth } from '../contexts/AuthContext';
+import TagSelector from '../components/TagSelector';
+import PromotionBadge from '../components/PromotionBadge';
 
 type LoungeType = 'question' | 'experience' | 'info' | 'free' | 'news' | 'advice' | 'recommend' | 'anonymous';
 
 const LoungeNew: React.FC = () => {
   const { colorMode } = useColorMode();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
   
@@ -39,26 +44,6 @@ const LoungeNew: React.FC = () => {
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const popularTags = getPopularTags(15);
-
-  const handleTagSelect = (tagName: string) => {
-    if (selectedTags.length >= 5) {
-      toast({
-        title: "태그는 최대 5개까지 선택할 수 있어요",
-        status: "warning",
-        duration: 3000,
-      });
-      return;
-    }
-    
-    if (!selectedTags.includes(tagName)) {
-      setSelectedTags([...selectedTags, tagName]);
-    }
-  };
-
-  const handleTagRemove = (tagName: string) => {
-    setSelectedTags(selectedTags.filter(tag => tag !== tagName));
-  };
 
   const handleSubmit = async () => {
     if (!title.trim() || !content.trim()) {
@@ -70,26 +55,56 @@ const LoungeNew: React.FC = () => {
       return;
     }
 
+    if (!user) {
+      toast({
+        title: "로그인이 필요합니다",
+        status: "error",
+        duration: 3000,
+      });
+      return;
+    }
+
     setIsSubmitting(true);
     
-    // 실제 구현에서는 API 호출 (이미지 업로드 포함)
-    console.log('Submitting post:', {
-      title,
-      content,
-      type,
-      tags: selectedTags
-    });
-    
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    toast({
-      title: "글이 성공적으로 등록되었습니다!",
-      status: "success",
-      duration: 3000,
-    });
-    
-    // 라운지 목록으로 이동
-    navigate('/lounge');
+    try {
+      // 실제 글 작성 - 세션 데이터에 저장
+      const newPost = sessionLoungeService.create({
+        title: title.trim(),
+        content: content.trim(),
+        author: user.name,
+        type,
+        tags: selectedTags,
+        authorVerified: user.isVerified || false
+      });
+      
+      console.log('새 글이 생성되었습니다:', newPost);
+      
+      toast({
+        title: "✨ 글이 성공적으로 등록되었습니다!",
+        description: "라운지에서 확인하실 수 있습니다.",
+        status: "success",
+        duration: 3000,
+      });
+      
+      // 라운지 목록으로 이동 (state로 새로고침 신호 전달)
+      navigate('/lounge', { 
+        state: { 
+          refresh: true, 
+          timestamp: Date.now() 
+        },
+        replace: false 
+      });
+      
+    } catch (error) {
+      console.error('글 작성 실패:', error);
+      toast({
+        title: "글 작성 중 오류가 발생했습니다",
+        status: "error",
+        duration: 3000,
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const getTypeText = (type: LoungeType) => {
@@ -129,7 +144,7 @@ const LoungeNew: React.FC = () => {
   };
 
   return (
-    <Container maxW="800px" py={8}>
+    <Container maxW="1400px" py={8}>
       <VStack spacing={8} align="stretch">
         {/* 헤더 */}
         <VStack spacing={4} align="flex-start">
@@ -171,10 +186,31 @@ const LoungeNew: React.FC = () => {
               {type === 'free' && "자유롭게 하고 싶은 이야기를 편하게 써주세요"}
               {type === 'news' && "뉴스나 업계 소식에 대한 짧은 의견을 남겨주세요"}
               {type === 'advice' && "딜레마나 선택 상황에 대한 조언을 구해주세요"}
-              {type === 'recommend' && "책, 서비스, 툴, 강의 등 추천을 요청해주세요"}
+              {type === 'recommend' && "책,서비스, 툴, 강의 등 추천을 요청해주세요"}
               {type === 'anonymous' && "익명으로 민감한 주제를 편히 이야기해주세요"}
             </FormHelperText>
           </FormControl>
+
+          {/* Story 승격 안내 */}
+          {(type === 'info' || type === 'news') && (
+            <Box
+              p={4}
+              bg={colorMode === 'dark' ? 'blue.900' : 'blue.50'}
+              border="1px"
+              borderColor={colorMode === 'dark' ? 'blue.700' : 'blue.200'}
+              borderRadius="lg"
+            >
+              <HStack spacing={2} mb={2}>
+                <Text fontSize="sm" fontWeight="600" color={colorMode === 'dark' ? 'blue.200' : 'blue.700'}>
+                  🚀 Story 승격 기회
+                </Text>
+              </HStack>
+              <Text fontSize="sm" color={colorMode === 'dark' ? 'blue.100' : 'blue.600'} lineHeight="1.5">
+                이 글 유형은 50개 이상의 좋아요를 받으면 Story로 승격될 수 있어요! 
+                좋은 정보와 팁을 공유해서 더 많은 사람들에게 도움을 주세요.
+              </Text>
+            </Box>
+          )}
 
           {/* 제목 입력 */}
           <FormControl>
@@ -211,65 +247,28 @@ const LoungeNew: React.FC = () => {
             <FormLabel fontWeight="500" color={colorMode === 'dark' ? '#c3c3c6' : '#4d4d59'}>
               내용
             </FormLabel>
-            <RichTextEditor
+            <WYSIWYGEditor
               value={content}
               onChange={setContent}
               placeholder={getPlaceholderText(type)}
-              minHeight="400px"
+              minHeight="500px"
             />
             <FormHelperText>
-              리치 텍스트 에디터를 사용해보세요. 볼드, 이탤릭, 형광펜 등 다양한 서식을 적용할 수 있고, 텍스트 영역에 직접 이미지를 드래그하여 삽입할 수 있습니다.
+              실시간으로 서식이 적용되는 에디터입니다. 텍스트를 선택 후 툴바의 버튼들을 사용하여 볼드, 이탤릭, 형광펜 등 다양한 서식을 적용하고, 이미지 버튼으로 이미지를 업로드할 수 있습니다.
             </FormHelperText>
           </FormControl>
 
           {/* 태그 선택 */}
           <FormControl>
             <FormLabel fontWeight="500" color={colorMode === 'dark' ? '#c3c3c6' : '#4d4d59'}>
-              태그 ({selectedTags.length}/5)
+              태그
             </FormLabel>
-            
-            {/* 선택된 태그 */}
-            {selectedTags.length > 0 && (
-              <VStack spacing={3} align="flex-start" mb={4}>
-                <Text fontSize="sm" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
-                  선택된 태그:
-                </Text>
-                <Wrap>
-                  {selectedTags.map((tag) => (
-                    <WrapItem key={tag}>
-                      <Tag size="md" variant="solid" colorScheme="brand">
-                        <TagLabel>{tag}</TagLabel>
-                        <TagCloseButton onClick={() => handleTagRemove(tag)} />
-                      </Tag>
-                    </WrapItem>
-                  ))}
-                </Wrap>
-              </VStack>
-            )}
-
-            {/* 인기 태그 */}
-            <VStack spacing={3} align="flex-start">
-              <Text fontSize="sm" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
-                인기 태그에서 선택하세요:
-              </Text>
-              <Wrap>
-                {popularTags.map((tag) => (
-                  <WrapItem key={tag.id}>
-                    <Tag
-                      size="sm"
-                      variant="outline"
-                      cursor="pointer"
-                      _hover={{ bg: colorMode === 'dark' ? '#4d4d59' : '#e4e4e5' }}
-                      onClick={() => handleTagSelect(tag.name)}
-                      opacity={selectedTags.includes(tag.name) ? 0.5 : 1}
-                    >
-                      <TagLabel>{tag.name}</TagLabel>
-                    </Tag>
-                  </WrapItem>
-                ))}
-              </Wrap>
-            </VStack>
-            
+            <TagSelector
+              selectedTags={selectedTags}
+              onTagsChange={setSelectedTags}
+              maxTags={5}
+              placeholder="글과 관련된 태그를 선택해주세요"
+            />
             <FormHelperText>
               글 내용과 관련된 태그를 선택하면 다른 사용자가 찾기 쉬워집니다
             </FormHelperText>

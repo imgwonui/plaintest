@@ -21,11 +21,13 @@ import {
   Image,
   IconButton,
   Tooltip,
+  Switch,
 } from '@chakra-ui/react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import RichTextEditor from '../components/RichTextEditor';
+import WYSIWYGEditor from '../components/WYSIWYGEditor';
 import { AttachmentIcon, DeleteIcon } from '@chakra-ui/icons';
+import { sessionStoryService } from '../services/sessionDataService';
 
 interface StoryForm {
   title: string;
@@ -35,6 +37,8 @@ interface StoryForm {
   readTime: number;
   imageUrl?: string;
   tags: string[];
+  isVerified: boolean;
+  verificationBadge?: string;
 }
 
 const AdminStoryNew: React.FC = () => {
@@ -57,6 +61,8 @@ const AdminStoryNew: React.FC = () => {
     category: 'recruitment',
     readTime: 5,
     tags: [],
+    isVerified: false,
+    verificationBadge: '',
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -76,14 +82,28 @@ const AdminStoryNew: React.FC = () => {
     setIsSubmitting(true);
     
     try {
-      // 실제로는 여기서 Story 생성 API 호출
-      console.log('Submitting story:', storyForm);
+      // 세션 스토리지에 Story 저장
+      const storyData = {
+        ...storyForm,
+        author: user?.name || 'Admin',
+        isPublished: true,
+        likeCount: 0,
+        scrapCount: 0,
+        viewCount: 0,
+        commentCount: 0,
+        tags: storyForm.tags || [],
+        imageUrl: storyForm.imageUrl || `https://picsum.photos/800/600?random=${Date.now()}`,
+        isVerified: storyForm.isVerified,
+        verificationBadge: storyForm.isVerified ? storyForm.verificationBadge : undefined,
+      };
       
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      sessionStoryService.create(storyData);
+      
+      console.log('Story created:', storyData);
       
       toast({
         title: "✨ Story가 즉시 발행되었습니다!",
-        description: "5분 이내에 관리자 페이지에서 취소할 수 있습니다",
+        description: "세션 스토리지에 저장되었습니다",
         status: "success",
         duration: 5000,
       });
@@ -120,7 +140,7 @@ const AdminStoryNew: React.FC = () => {
   }
 
   return (
-    <Container maxW="900px" py={8}>
+    <Container maxW="1400px" py={8}>
       <VStack spacing={8} align="stretch">
         {/* 헤더 */}
         <VStack spacing={4} align="flex-start">
@@ -267,21 +287,64 @@ const AdminStoryNew: React.FC = () => {
             <FormLabel fontWeight="500" color={colorMode === 'dark' ? '#c3c3c6' : '#4d4d59'}>
               Story 내용 *
             </FormLabel>
-            <RichTextEditor
+            <WYSIWYGEditor
               value={storyForm.content}
               onChange={(value) => setStoryForm(prev => ({ ...prev, content: value }))}
               placeholder="풍부한 서식을 활용해 Story를 작성해주세요.
 
 📝 작성 팁:
 - 제목, 소제목을 활용해 구조를 명확히 하세요
-- 중요한 내용은 **굵게** 표시하고 핵심은 ==형광펜==으로 강조하세요
+- 중요한 내용은 굵게 표시하고 핵심은 형광펜으로 강조하세요
 - 구체적인 사례와 경험을 포함해주세요
 - 독자에게 도움이 되는 실용적인 정보를 제공하세요"
               minHeight="500px"
             />
             <FormHelperText>
-              리치 텍스트 에디터로 서식을 자유롭게 활용하세요. 볼드, 이탤릭, 형광펜, 링크 등을 사용할 수 있고, 텍스트 영역에 직접 이미지를 드래그하여 삽입할 수 있습니다.
+              실시간으로 서식이 적용되는 WYSIWYG 에디터입니다. 툴바의 버튼들로 볼드, 이탤릭, 형광펜, 글씨 색상 등을 적용하고, 이미지 업로드 및 드래그로 위치 이동과 크기 조절이 가능합니다.
             </FormHelperText>
+          </FormControl>
+
+          {/* 검수 배지 설정 */}
+          <FormControl>
+            <FormLabel fontWeight="500" color={colorMode === 'dark' ? '#c3c3c6' : '#4d4d59'}>
+              검수 배지 설정
+            </FormLabel>
+            <VStack spacing={4} align="stretch">
+              <HStack spacing={4}>
+                <Switch
+                  isChecked={storyForm.isVerified}
+                  onChange={(e) => setStoryForm(prev => ({ 
+                    ...prev, 
+                    isVerified: e.target.checked,
+                    verificationBadge: e.target.checked ? prev.verificationBadge || '페이롤 아웃소싱 전문회사인 월급날에서 검수한 글이에요.' : ''
+                  }))}
+                  colorScheme="brand"
+                />
+                <Text color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}>
+                  검수 완료 배지 표시
+                </Text>
+              </HStack>
+              
+              {storyForm.isVerified && (
+                <FormControl>
+                  <FormLabel fontSize="sm" fontWeight="400" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
+                    배지 문구
+                  </FormLabel>
+                  <Input
+                    value={storyForm.verificationBadge}
+                    onChange={(e) => setStoryForm(prev => ({ ...prev, verificationBadge: e.target.value }))}
+                    placeholder="검수 배지에 표시할 문구를 입력하세요"
+                    bg={colorMode === 'dark' ? '#2c2c35' : 'white'}
+                    border={colorMode === 'dark' ? '1px solid #4d4d59' : '1px solid #e4e4e5'}
+                    color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}
+                    maxLength={100}
+                  />
+                  <FormHelperText>
+                    Story 상단에 초록색 배지로 표시됩니다. (예: "페이롤 아웃소싱 전문회사인 월급날에서 검수한 글이에요.")
+                  </FormHelperText>
+                </FormControl>
+              )}
+            </VStack>
           </FormControl>
         </VStack>
 

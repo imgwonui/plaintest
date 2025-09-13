@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Flex,
@@ -23,22 +23,51 @@ import {
   VStack,
   useDisclosure,
   Image,
+  Divider,
+  Badge,
 } from '@chakra-ui/react';
 import { Link, useLocation } from 'react-router-dom';
-import { SearchIcon, HamburgerIcon, MoonIcon, SunIcon } from '@chakra-ui/icons';
+import { SearchIcon, HamburgerIcon, MoonIcon, SunIcon, StarIcon, SettingsIcon } from '@chakra-ui/icons';
 import { useColorMode } from '@chakra-ui/react';
+// Plain 로고
 import PlainLogo from '../logo/plain.png';
 import SearchModal from './SearchModal';
 import { useAuth } from '../contexts/AuthContext';
+import { sessionSearchService } from '../services/sessionDataService';
 
 const Header: React.FC = () => {
   const location = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [scrollProgress, setScrollProgress] = useState(0);
   const { isOpen, onOpen, onClose } = useDisclosure();
   const { isOpen: isSearchOpen, onOpen: onSearchOpen, onClose: onSearchClose } = useDisclosure();
   const { colorMode, toggleColorMode } = useColorMode();
   const { user, isLoggedIn, isAdmin, logout } = useAuth();
   const isMobile = useBreakpointValue({ base: true, md: false });
+
+  // 스크롤 위치 감지
+  useEffect(() => {
+    const handleScroll = () => {
+      // 스토리 디테일 페이지에서만 동작
+      if (location.pathname.includes('/story/') && !location.pathname.includes('/story/new') && !location.pathname.includes('/edit')) {
+        const scrollTop = window.scrollY;
+        const documentHeight = document.documentElement.scrollHeight - window.innerHeight;
+        const scrollPercentage = (scrollTop / documentHeight) * 100;
+        
+        setIsScrolled(scrollTop > 750); // 썸네일 높이(800px) 근처에서 변경
+        setScrollProgress(Math.min(scrollPercentage, 100));
+      } else {
+        setIsScrolled(false);
+        setScrollProgress(0);
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    handleScroll(); // 초기 실행
+
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [location.pathname]);
 
   const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path);
 
@@ -63,7 +92,10 @@ const Header: React.FC = () => {
 
   const handleSearch = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && searchQuery.trim()) {
+      // 검색어를 세션 스토리지에 추가
+      sessionSearchService.addSearchKeyword(searchQuery.trim());
       console.log('Search:', searchQuery);
+      // TODO: 실제 검색 페이지로 이동하는 로직 추가
     }
   };
 
@@ -80,41 +112,61 @@ const Header: React.FC = () => {
               <Menu>
                 <MenuButton as={Button} variant="ghost" size="sm" justifyContent="flex-start">
                   <HStack>
-                    <Avatar size="xs" name={user?.name} />
+                    <Avatar size="xs" name={user?.name} src={user?.avatar} />
                     <Text>{user?.name}</Text>
                   </HStack>
                 </MenuButton>
-                <MenuList bg={colorMode === 'dark' ? 'gray.600' : 'white'}>
-                  <MenuItem _hover={{ bg: colorMode === 'dark' ? 'gray.500' : 'gray.50' }}>
-                    프로필
+                <MenuList bg={colorMode === 'dark' ? 'gray.700' : 'white'}>
+                  <MenuItem 
+                    as={Link}
+                    to="/profile"
+                    _hover={{ bg: colorMode === 'dark' ? 'gray.600' : 'gray.50' }}
+                  >
+                    <VStack align="flex-start" spacing={0}>
+                      <Text fontWeight="500" fontSize="sm">프로필</Text>
+                      <Text fontSize="xs" color={colorMode === 'dark' ? 'gray.400' : 'gray.500'}>
+                        계정 정보 및 설정
+                      </Text>
+                    </VStack>
                   </MenuItem>
+
                   <MenuItem 
                     as={Link}
                     to="/scrap"
-                    _hover={{ bg: colorMode === 'dark' ? 'gray.500' : 'gray.50' }}
+                    _hover={{ bg: colorMode === 'dark' ? 'gray.600' : 'gray.50' }}
                   >
-                    스크랩
+                    <VStack align="flex-start" spacing={0}>
+                      <Text fontWeight="500" fontSize="sm">북마크</Text>
+                      <Text fontSize="xs" color={colorMode === 'dark' ? 'gray.400' : 'gray.500'}>
+                        저장한 글 모아보기
+                      </Text>
+                    </VStack>
                   </MenuItem>
+
                   {isAdmin && (
                     <MenuItem
                       as={Link}
                       to="/admin"
-                      _hover={{ bg: colorMode === 'dark' ? 'gray.500' : 'gray.50' }}
-                      color="orange.500"
-                      fontWeight="600"
+                      _hover={{ bg: colorMode === 'dark' ? 'gray.600' : 'gray.50' }}
                     >
-                      🛠️ 관리자
+                      <VStack align="flex-start" spacing={0}>
+                        <HStack>
+                          <Text fontWeight="500" fontSize="sm" color="orange.500">관리자</Text>
+                          <Badge colorScheme="orange" size="sm">ADMIN</Badge>
+                        </HStack>
+                        <Text fontSize="xs" color={colorMode === 'dark' ? 'gray.400' : 'gray.500'}>
+                          시스템 관리
+                        </Text>
+                      </VStack>
                     </MenuItem>
                   )}
-                  <MenuItem _hover={{ bg: colorMode === 'dark' ? 'gray.500' : 'gray.50' }}>
-                    설정
-                  </MenuItem>
+
                   <MenuItem 
                     color="red.500" 
-                    _hover={{ bg: colorMode === 'dark' ? 'gray.500' : 'gray.50' }}
+                    _hover={{ bg: colorMode === 'dark' ? 'gray.600' : 'gray.50' }}
                     onClick={logout}
                   >
-                    로그아웃
+                    <Text fontWeight="500" fontSize="sm">로그아웃</Text>
                   </MenuItem>
                 </MenuList>
               </Menu>
@@ -127,8 +179,9 @@ const Header: React.FC = () => {
                 borderColor="brand.500"
                 color="brand.500"
                 _hover={{
-                  bg: 'brand.50',
-                  borderColor: 'brand.600'
+                  bg: 'brand.500',
+                  color: 'white',
+                  borderColor: 'brand.500'
                 }}
                 borderWidth={1}
               >
@@ -141,8 +194,18 @@ const Header: React.FC = () => {
     </Drawer>
   );
 
+  // 스토리 디테일 페이지인지 확인
+  const isStoryDetailPage = location.pathname.includes('/story/') && !location.pathname.includes('/story/new') && !location.pathname.includes('/edit');
+
   return (
-    <Box bg={colorMode === 'dark' ? 'gray.800' : 'white'} position="sticky" top={0} zIndex={100}>
+    <>
+      <Box 
+        bg={isStoryDetailPage && !isScrolled ? "transparent" : (colorMode === 'dark' ? 'gray.800' : 'white')} 
+        position="sticky" 
+        top={0} 
+        zIndex={200}
+        transition="background 0.3s ease"
+      >
       <Flex
         maxW="1200px"
         mx="auto"
@@ -153,12 +216,23 @@ const Header: React.FC = () => {
       >
         <HStack spacing={8}>
           <Box as={Link} to="/" _hover={{ textDecoration: 'none' }}>
-            <Image 
-              src={PlainLogo} 
-              alt="Plain Logo" 
-              height="32px"
-              objectFit="contain"
-            />
+            {PlainLogo ? (
+              <Image 
+                src={PlainLogo} 
+                alt="Plain Logo" 
+                height="32px"
+                objectFit="contain"
+              />
+            ) : (
+              <Text
+                fontSize="xl"
+                fontWeight="700"
+                color="brand.500"
+                _hover={{ textDecoration: "none" }}
+              >
+                Plain
+              </Text>
+            )}
           </Box>
           
           {!isMobile && (
@@ -191,39 +265,59 @@ const Header: React.FC = () => {
               {isLoggedIn ? (
                 <Menu>
                   <MenuButton as={Button} variant="ghost" size="sm" p={0}>
-                    <Avatar size="sm" name={user?.name} />
+                    <Avatar size="sm" name={user?.name} src={user?.avatar} />
                   </MenuButton>
-                  <MenuList bg={colorMode === 'dark' ? 'gray.600' : 'white'}>
-                    <MenuItem _hover={{ bg: colorMode === 'dark' ? 'gray.500' : 'gray.50' }}>
-                      프로필
+                  <MenuList bg={colorMode === 'dark' ? 'gray.700' : 'white'}>
+                    <MenuItem 
+                      as={Link}
+                      to="/profile"
+                      _hover={{ bg: colorMode === 'dark' ? 'gray.600' : 'gray.50' }}
+                    >
+                      <VStack align="flex-start" spacing={0}>
+                        <Text fontWeight="500" fontSize="sm">프로필</Text>
+                        <Text fontSize="xs" color={colorMode === 'dark' ? 'gray.400' : 'gray.500'}>
+                          계정 정보 및 설정
+                        </Text>
+                      </VStack>
                     </MenuItem>
+
                     <MenuItem 
                       as={Link}
                       to="/scrap"
-                      _hover={{ bg: colorMode === 'dark' ? 'gray.500' : 'gray.50' }}
+                      _hover={{ bg: colorMode === 'dark' ? 'gray.600' : 'gray.50' }}
                     >
-                      스크랩
+                      <VStack align="flex-start" spacing={0}>
+                        <Text fontWeight="500" fontSize="sm">북마크</Text>
+                        <Text fontSize="xs" color={colorMode === 'dark' ? 'gray.400' : 'gray.500'}>
+                          저장한 글 모아보기
+                        </Text>
+                      </VStack>
                     </MenuItem>
+
                     {isAdmin && (
                       <MenuItem
                         as={Link}
                         to="/admin"
-                        _hover={{ bg: colorMode === 'dark' ? 'gray.500' : 'gray.50' }}
-                        color="orange.500"
-                        fontWeight="600"
+                        _hover={{ bg: colorMode === 'dark' ? 'gray.600' : 'gray.50' }}
                       >
-                        🛠️ 관리자
+                        <VStack align="flex-start" spacing={0}>
+                          <HStack>
+                            <Text fontWeight="500" fontSize="sm" color="orange.500">관리자</Text>
+                            <Badge colorScheme="orange" size="sm">ADMIN</Badge>
+                          </HStack>
+                          <Text fontSize="xs" color={colorMode === 'dark' ? 'gray.400' : 'gray.500'}>
+                            시스템 관리
+                          </Text>
+                        </VStack>
                       </MenuItem>
                     )}
-                    <MenuItem _hover={{ bg: colorMode === 'dark' ? 'gray.500' : 'gray.50' }}>
-                      설정
-                    </MenuItem>
+
                     <MenuItem 
                       color="red.500" 
-                      _hover={{ bg: colorMode === 'dark' ? 'gray.500' : 'gray.50' }}
+                      _hover={{ bg: colorMode === 'dark' ? 'gray.600' : 'gray.50' }}
                       onClick={logout}
                     >
-                      로그아웃
+                      <Text fontWeight="500" fontSize="sm">로그아웃</Text>
                     </MenuItem>
                   </MenuList>
                 </Menu>
@@ -236,8 +330,9 @@ const Header: React.FC = () => {
                   borderColor="brand.500"
                   color="brand.500"
                   _hover={{
-                    bg: 'brand.50',
-                    borderColor: 'brand.600'
+                    bg: 'brand.500',
+                    color: 'white',
+                    borderColor: 'brand.500'
                   }}
                   borderWidth={1}
                 >
@@ -275,11 +370,25 @@ const Header: React.FC = () => {
         </HStack>
       </Flex>
       
+      {/* 스토리 읽기 진행도 바 */}
+      {isStoryDetailPage && (
+        <Box
+          position="absolute"
+          bottom="0"
+          left="0"
+          height="3px"
+          bg="brand.500"
+          width={`${scrollProgress}%`}
+          transition="width 0.1s ease-out"
+        />
+      )}
+      </Box>
+      
       <MobileMenu />
       
       {/* 검색 모달 */}
       <SearchModal isOpen={isSearchOpen} onClose={onSearchClose} />
-    </Box>
+    </>
   );
 };
 

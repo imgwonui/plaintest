@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Container,
@@ -19,22 +19,59 @@ import { Link } from 'react-router-dom';
 import Card from '../components/Card';
 import EmptyState from '../components/EmptyState';
 import { CardSkeletonGrid } from '../components/LoadingSpinner';
-import { stories } from '../mocks/stories';
-import { loungePosts } from '../mocks/lounge';
+import SEOHead from '../components/SEOHead';
+import { OrganizationJsonLd, WebSiteJsonLd } from '../components/JsonLd';
+import { WebAnalytics } from '../components/Analytics';
+import { sessionStoryService, sessionLoungeService, sessionUserService, initializeData } from '../services/sessionDataService';
+import LevelBadge from '../components/UserLevel/LevelBadge';
+import { getUserDisplayLevel } from '../services/userLevelService';
+import { testConnection } from '../services/supabaseService';
 
 const Home: React.FC = () => {
   const { colorMode } = useColorMode();
   const [currentWeeklyIndex, setCurrentWeeklyIndex] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [stories, setStories] = useState<any[]>([]);
+  const [loungePosts, setLoungePosts] = useState<any[]>([]);
+  
+  // 세션 데이터 로드
+  useEffect(() => {
+    initializeData();
+    setStories(sessionStoryService.getAll());
+    setLoungePosts(sessionLoungeService.getAll());
+  }, []);
   
   // First 5 stories as weekly topics
   const weeklyTopics = stories.slice(0, 5);
   const currentWeeklyTopic = weeklyTopics[currentWeeklyIndex];
+
+  // Supabase 연결 테스트
+  useEffect(() => {
+    const checkConnection = async () => {
+      try {
+        const isConnected = await testConnection();
+        if (isConnected) {
+          console.log('🎉 Supabase 데이터베이스 연결이 성공적으로 설정되었습니다!');
+        }
+      } catch (error) {
+        console.error('🔥 Supabase 연결 중 오류 발생:', error);
+      }
+    };
+
+    checkConnection();
+  }, []);
   
   const latestStories = stories.slice(5, 11); // Next 6 stories as latest
+  console.log('🔍 홈페이지 라운지 데이터:', {
+    전체라운지글수: loungePosts.length,
+    라운지글목록: loungePosts.map(p => ({ title: p.title, likeCount: p.likeCount, isExcellent: p.isExcellent }))
+  });
+
   const hotLoungePosts = loungePosts
-    .filter(post => post.isExcellent || post.likeCount > 30)
+    .filter(post => post.isExcellent || (post.likeCount && post.likeCount > 5) || true) // 임시로 모든 글 표시
     .slice(0, 12);
+    
+  console.log('🔍 필터링 후 라운지 글:', hotLoungePosts.length, '개');
 
   const handleNextWeekly = () => {
     if (isTransitioning) return;
@@ -55,7 +92,22 @@ const Home: React.FC = () => {
   };
 
   return (
-    <Container maxW="1200px" py={{ base: 6, md: 8 }}>
+    <>
+      <SEOHead
+        title="Plain - 인사담당자를 위한 이야기와 라운지"
+        description="HR 전문가들의 실무 경험과 노하우를 공유하는 커뮤니티. 채용, 교육, 평가, 조직문화 등 인사업무의 모든 것을 함께 나눕니다."
+        keywords="HR, 인사, 인사담당자, 채용, 면접, 온보딩, 성과평가, 조직문화, 인사관리, 커뮤니티, MZ세대, 원격근무, 워라밸"
+        url="/"
+      />
+      <OrganizationJsonLd
+        name="Plain"
+        description="HR 전문가들의 실무 경험과 노하우를 공유하는 커뮤니티"
+        url="https://plain-hr.com"
+        logo="https://plain-hr.com/logo/plain.png"
+      />
+      <WebSiteJsonLd />
+      <WebAnalytics />
+      <Container maxW="1200px" py={{ base: 6, md: 8 }}>
       <VStack spacing={10} align="stretch">
         {/* Weekly Topic Feature - Full Width */}
         {currentWeeklyTopic && (
@@ -66,7 +118,7 @@ const Home: React.FC = () => {
                 <Box 
                   as={Link}
                   to={`/story/${currentWeeklyTopic.id}`}
-                  w="700px" 
+                  w="750px" 
                   h="550px" 
                   flexShrink={0}
                   opacity={isTransitioning ? 0.3 : 1}
@@ -82,7 +134,7 @@ const Home: React.FC = () => {
                   <Image
                     src={currentWeeklyTopic.imageUrl}
                     alt={currentWeeklyTopic.title}
-                    w="700px"
+                    w="750px"
                     h="550px"
                     objectFit="cover"
                     borderRadius="8px"
@@ -161,19 +213,6 @@ const Home: React.FC = () => {
                     </Text>
                   </VStack>
                 </VStack>
-                
-                {/* Next Arrow - Only icon */}
-                <ChevronRightIcon 
-                  boxSize={8} 
-                  color={colorMode === 'dark' ? '#7e7e87' : '#626269'}
-                  cursor="pointer"
-                  onClick={handleNextWeekly}
-                  _hover={{
-                    color: 'brand.500',
-                    transform: 'scale(1.1)'
-                  }}
-                  transition="all 0.2s"
-                />
               </HStack>
             </Box>
           )}
@@ -202,6 +241,8 @@ const Home: React.FC = () => {
                   tags={story.tags}
                   createdAt={story.createdAt}
                   readTime={story.readTime}
+                  author={story.author}
+                  authorId={story.author ? sessionUserService.getUserIdByName(story.author) : undefined}
                 />
               ))}
             </SimpleGrid>
@@ -281,7 +322,17 @@ const Home: React.FC = () => {
                     </Text>
                     
                     <HStack spacing={4} fontSize="xs" color={colorMode === 'dark' ? '#7e7e87' : '#626269'}>
-                      <Text>{post.author}</Text>
+                      <HStack spacing={2} align="center">
+                        <Text>{post.author}</Text>
+                        {post.author && (
+                          <LevelBadge 
+                            level={getUserDisplayLevel(sessionUserService.getUserIdByName(post.author) || 1).level} 
+                            size="xs" 
+                            variant="subtle"
+                            showIcon={true}
+                          />
+                        )}
+                      </HStack>
                       <Text>·</Text>
                       <Text>{post.likeCount}개 좋아요</Text>
                       <Text>·</Text>
@@ -294,12 +345,13 @@ const Home: React.FC = () => {
           ) : (
             <EmptyState
               title="아직 라운지 글이 없어요"
-              description="첫 번째 이야기를 들려주세요!"
+              description={<Text color={colorMode === 'dark' ? '#c3c3c6' : '#626269'}>첫 번째 이야기를 들려주세요! 실전 사례일수록 더 좋아요. 민감정보는 가려주세요.</Text>}
             />
           )}
         </VStack>
       </VStack>
-    </Container>
+      </Container>
+    </>
   );
 };
 

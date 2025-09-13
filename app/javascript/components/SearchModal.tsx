@@ -20,6 +20,7 @@ import {
 } from '@chakra-ui/react';
 import { SearchIcon, CloseIcon } from '@chakra-ui/icons';
 import { useNavigate } from 'react-router-dom';
+import { sessionSearchService } from '../services/sessionDataService';
 
 interface SearchModalProps {
   isOpen: boolean;
@@ -31,56 +32,36 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose }) => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
-  const [hotSearchTerms, setHotSearchTerms] = useState([
-    { term: 'HR 디지털 전환', rank: 1, change: 0 },
-    { term: '원격근무 관리', rank: 2, change: 1 },
-    { term: '성과평가 개선', rank: 3, change: -1 },
-    { term: '채용 면접 기법', rank: 4, change: 2 },
-    { term: '직무 교육 체계', rank: 5, change: -1 },
-  ]);
+  const [hotSearchTerms, setHotSearchTerms] = useState<any[]>([]);
 
-  // 실시간 순위 업데이트 시뮬레이션
+  // 모달이 열릴 때 실제 세션 데이터 로드
   useEffect(() => {
-    if (!isOpen) return;
-    
-    const interval = setInterval(() => {
-      setHotSearchTerms(prev => {
-        const newTerms = [...prev];
-        // 랜덤하게 두 개의 항목 순위 변경
-        const idx1 = Math.floor(Math.random() * newTerms.length);
-        const idx2 = Math.floor(Math.random() * newTerms.length);
-        
-        if (idx1 !== idx2) {
-          // 순위 교체
-          [newTerms[idx1], newTerms[idx2]] = [newTerms[idx2], newTerms[idx1]];
-          
-          // 순위 변화 계산
-          newTerms.forEach((term, index) => {
-            const oldRank = term.rank;
-            const newRank = index + 1;
-            term.rank = newRank;
-            term.change = oldRank - newRank; // 양수면 상승, 음수면 하락
-          });
-        }
-        
-        return newTerms;
-      });
-    }, 3000); // 3초마다 업데이트
-
-    return () => clearInterval(interval);
+    if (isOpen) {
+      // 인기 검색어 로드
+      const topKeywords = sessionSearchService.getTopKeywords(5);
+      const formattedKeywords = topKeywords.map((item, index) => ({
+        term: item.keyword,
+        rank: index + 1,
+        count: item.count,
+        change: 0 // 실제로는 이전 순위와 비교해서 계산
+      }));
+      setHotSearchTerms(formattedKeywords);
+      
+      // 최근 검색어 로드
+      const recentKeywords = sessionSearchService.getRecentKeywords(8);
+      setSearchHistory(recentKeywords.map(item => item.keyword));
+    }
   }, [isOpen]);
 
   const handleSearch = (query: string) => {
     if (query.trim()) {
-      // 검색 히스토리에 추가
-      setSearchHistory(prev => {
-        const filtered = prev.filter(item => item !== query.trim());
-        return [query.trim(), ...filtered].slice(0, 10); // 최대 10개
-      });
+      // 세션 스토리지에 검색어 추가
+      sessionSearchService.addSearchKeyword(query.trim());
       
       // 검색 결과 페이지로 이동
       navigate(`/search?q=${encodeURIComponent(query.trim())}`);
       onClose();
+      setSearchQuery(''); // 검색어 초기화
     }
   };
 
@@ -166,7 +147,6 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose }) => {
                         cursor: 'pointer'
                       }}
                       onClick={() => {
-                        setSearchQuery(item.term);
                         handleSearch(item.term);
                       }}
                       transition="all 0.2s"
@@ -188,19 +168,11 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose }) => {
                       <HStack spacing={1}>
                         <Text
                           fontSize="xs"
-                          color={getRankChangeColor(item.change)}
-                          fontWeight="600"
+                          color={colorMode === 'dark' ? 'gray.400' : 'gray.500'}
+                          fontWeight="500"
                         >
-                          {getRankChangeIcon(item.change)}
+                          {item.count}회
                         </Text>
-                        {Math.abs(item.change) > 0 && (
-                          <Text
-                            fontSize="xs"
-                            color={getRankChangeColor(item.change)}
-                          >
-                            {Math.abs(item.change)}
-                          </Text>
-                        )}
                       </HStack>
                     </Flex>
                   </ScaleFade>
@@ -220,7 +192,11 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose }) => {
                     color="gray.400"
                     cursor="pointer"
                     _hover={{ color: 'gray.300' }}
-                    onClick={() => setSearchHistory([])}
+                    onClick={() => {
+                      // 세션에서 모든 검색어 삭제
+                      searchHistory.forEach(term => sessionSearchService.removeKeyword(term));
+                      setSearchHistory([]);
+                    }}
                   >
                     모두 지우기
                   </Text>
@@ -242,7 +218,6 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose }) => {
                         borderColor: colorMode === 'dark' ? 'brand.400' : 'brand.300'
                       }}
                       onClick={() => {
-                        setSearchQuery(term);
                         handleSearch(term);
                       }}
                     >
@@ -256,6 +231,8 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose }) => {
                         variant="ghost"
                         onClick={(e) => {
                           e.stopPropagation();
+                          // 실제 세션에서도 삭제
+                          sessionSearchService.removeKeyword(term);
                           setSearchHistory(prev => prev.filter((_, i) => i !== index));
                         }}
                       />
