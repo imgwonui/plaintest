@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Plain 정보/커뮤니티 사이트 프런트엔드",
   "scripts": {
+    "start": "npm run build && npx serve dist -s",
     "dev": "webpack-dev-server",
     "build": "webpack --mode=production",
     "build:gh-pages": "npm run sitemap && webpack --mode=production --output-public-path=/plaintest/",
@@ -26,7 +27,8 @@
     "react-helmet-async": "^2.0.5",
     "react-markdown": "^8.0.5",
     "react-quill": "^2.0.0",
-    "react-router-dom": "^6.8.0"
+    "react-router-dom": "^6.8.0",
+    "serve": "^14.2.0"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
