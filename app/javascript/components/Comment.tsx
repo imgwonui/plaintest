@@ -40,12 +40,13 @@ interface CommentData {
   guestPassword?: string;
   authorVerified?: boolean;
   parentId?: number;
+  authorId?: string;
   replies?: CommentData[];
 }
 
 interface CommentProps {
   comment: CommentData;
-  currentUser?: { id: number; name: string; isAdmin?: boolean };
+  currentUser?: { id: string; name: string; isAdmin?: boolean };
   isLoggedIn?: boolean;
   onEdit?: (commentId: number, newContent: string, password?: string) => void;
   onDelete?: (commentId: number, password?: string) => void;
@@ -82,9 +83,9 @@ const Comment: React.FC<CommentProps> = ({
       return true;
     }
     
-    // 로그인 댓글: 로그인 상태이고 작성자가 같거나 관리자인 경우
+    // 로그인 댓글: 로그인 상태이고 작성자 ID가 같거나 관리자인 경우
     if (isLoggedIn && currentUser) {
-      return comment.author === currentUser.name || currentUser.isAdmin;
+      return comment.authorId === currentUser.id || currentUser.isAdmin;
     }
     
     // 로그인하지 않은 상태에서는 로그인 댓글 수정/삭제 불가
@@ -181,7 +182,7 @@ const Comment: React.FC<CommentProps> = ({
         <Avatar 
           size="sm" 
           name={comment.author} 
-          src={comment.isGuest ? undefined : (user?.name === comment.author ? user.avatar : undefined)} 
+          src={comment.isGuest ? undefined : (user?.name === comment.author ? user?.avatar : undefined)} 
         />
         <VStack align="stretch" flex={1} spacing={2}>
           <HStack justify="space-between">
@@ -194,13 +195,18 @@ const Comment: React.FC<CommentProps> = ({
                   </Text>
                 )}
               </Text>
-              {!comment.isGuest && (
-                <LevelBadge 
-                  level={getUserDisplayLevel(sessionUserService.getUserIdByName(comment.author) || 1).level} 
-                  size="xs" 
-                  variant="subtle"
-                  showIcon={true}
-                />
+              {!comment.isGuest && comment.authorId && (
+                // 댓글 작성자가 현재 관리자인 경우 "관리자" 표시, 일반 사용자는 레벨 표시
+                currentUser?.isAdmin && comment.authorId === currentUser.id ? (
+                  <Badge colorScheme="purple" size="sm">관리자</Badge>
+                ) : (
+                  <LevelBadge 
+                    level={getUserDisplayLevel(comment.authorId).level} 
+                    size="xs" 
+                    variant="subtle"
+                    showIcon={true}
+                  />
+                )
               )}
               {comment.authorVerified && !comment.isGuest && (
                 <Badge colorScheme="green" size="sm">인사담당자</Badge>
@@ -424,7 +430,7 @@ const Comment: React.FC<CommentProps> = ({
 
 interface CommentListProps {
   comments: CommentData[];
-  currentUser?: { id: number; name: string; isAdmin?: boolean };
+  currentUser?: { id: string; name: string; isAdmin?: boolean };
   isLoggedIn?: boolean;
   onEdit?: (commentId: number, newContent: string, password?: string) => void;
   onDelete?: (commentId: number, password?: string) => void;
@@ -520,12 +526,19 @@ export const CommentForm: React.FC<CommentFormProps> = ({
           <Text fontSize="sm" color={colorMode === 'dark' ? '#c3c3c6' : '#4d4d59'}>
             {currentUserName}님으로 댓글 작성
           </Text>
-          <LevelBadge 
-            level={getUserDisplayLevel(sessionUserService.getUserIdByName(currentUserName) || 1).level} 
-            size="xs" 
-            variant="subtle"
-            showIcon={true}
-          />
+          {user && (
+            // 현재 사용자가 관리자인 경우 "관리자" 표시, 일반 사용자는 레벨 표시
+            user.isAdmin ? (
+              <Badge colorScheme="purple" size="sm">관리자</Badge>
+            ) : (
+              <LevelBadge 
+                level={getUserDisplayLevel(user.id).level} 
+                size="xs" 
+                variant="subtle"
+                showIcon={true}
+              />
+            )
+          )}
           {currentUserVerified && (
             <Badge colorScheme="green" size="sm">인사담당자</Badge>
           )}

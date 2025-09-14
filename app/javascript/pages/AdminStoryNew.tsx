@@ -27,7 +27,7 @@ import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import WYSIWYGEditor from '../components/WYSIWYGEditor';
 import { AttachmentIcon, DeleteIcon } from '@chakra-ui/icons';
-import { sessionStoryService } from '../services/sessionDataService';
+import { storyService } from '../services/supabaseDataService';
 
 interface StoryForm {
   title: string;
@@ -82,28 +82,27 @@ const AdminStoryNew: React.FC = () => {
     setIsSubmitting(true);
     
     try {
-      // 세션 스토리지에 Story 저장
+      console.log('📝 관리자 스토리 생성 시작:', storyForm);
+      
+      // Supabase에 Story 저장 (검수 배지 포함)
       const storyData = {
-        ...storyForm,
-        author: user?.name || 'Admin',
-        isPublished: true,
-        likeCount: 0,
-        scrapCount: 0,
-        viewCount: 0,
-        commentCount: 0,
-        tags: storyForm.tags || [],
-        imageUrl: storyForm.imageUrl || `https://picsum.photos/800/600?random=${Date.now()}`,
-        isVerified: storyForm.isVerified,
-        verificationBadge: storyForm.isVerified ? storyForm.verificationBadge : undefined,
+        title: storyForm.title.trim(),
+        content: storyForm.content.trim(),
+        summary: storyForm.summary.trim(),
+        author_name: user?.name || '관리자',
+        is_verified: storyForm.isVerified,
+        verification_badge: storyForm.isVerified ? storyForm.verificationBadge : null
       };
       
-      sessionStoryService.create(storyData);
+      console.log('📝 전송할 스토리 데이터:', storyData);
       
-      console.log('Story created:', storyData);
+      const newStory = await storyService.create(storyData);
+      
+      console.log('✅ 관리자 스토리 생성 성공:', newStory);
       
       toast({
-        title: "✨ Story가 즉시 발행되었습니다!",
-        description: "세션 스토리지에 저장되었습니다",
+        title: "✨ Story가 성공적으로 생성되었습니다!",
+        description: "데이터베이스에 저장되었습니다",
         status: "success",
         duration: 5000,
       });
@@ -112,9 +111,10 @@ const AdminStoryNew: React.FC = () => {
       navigate('/admin/story');
       
     } catch (error) {
+      console.error('❌ 관리자 스토리 생성 실패:', error);
       toast({
-        title: "발행 실패",
-        description: "Story 발행 중 오류가 발생했습니다",
+        title: "생성 실패",
+        description: "Story 생성 중 오류가 발생했습니다",
         status: "error",
         duration: 3000,
       });

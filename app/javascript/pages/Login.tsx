@@ -21,14 +21,22 @@ const Login: React.FC = () => {
   const { login, adminLogin } = useAuth();
   const navigate = useNavigate();
 
-  const handleLogin = (provider: 'kakao' | 'google') => {
-    login(provider);
-    navigate('/'); // 로그인 후 홈으로 리다이렉트
+  const handleLogin = async (provider: 'kakao' | 'google') => {
+    try {
+      await login(provider);
+      navigate('/'); // 로그인 완료 후 홈으로 리다이렉트
+    } catch (error) {
+      console.error('로그인 실패:', error);
+    }
   };
 
-  const handleAdminLogin = () => {
-    adminLogin();
-    navigate('/admin'); // 관리자 로그인 후 관리자 페이지로 리다이렉트
+  const handleAdminLogin = async () => {
+    try {
+      await adminLogin();
+      navigate('/admin'); // 관리자 로그인 완료 후 관리자 페이지로 리다이렉트
+    } catch (error) {
+      console.error('관리자 로그인 실패:', error);
+    }
   };
 
   return (

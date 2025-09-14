@@ -20,7 +20,7 @@ import {
 } from '@chakra-ui/react';
 import { SearchIcon, CloseIcon } from '@chakra-ui/icons';
 import { useNavigate } from 'react-router-dom';
-import { sessionSearchService } from '../services/sessionDataService';
+import { searchService } from '../services/supabaseDataService';
 
 interface SearchModalProps {
   isOpen: boolean;
@@ -34,31 +34,38 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose }) => {
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [hotSearchTerms, setHotSearchTerms] = useState<any[]>([]);
 
-  // 모달이 열릴 때 실제 세션 데이터 로드
+  // 모달이 열릴 때 Supabase 데이터 로드
   useEffect(() => {
     if (isOpen) {
-      // 인기 검색어 로드
-      const topKeywords = sessionSearchService.getTopKeywords(5);
-      const formattedKeywords = topKeywords.map((item, index) => ({
-        term: item.keyword,
-        rank: index + 1,
-        count: item.count,
-        change: 0 // 실제로는 이전 순위와 비교해서 계산
-      }));
-      setHotSearchTerms(formattedKeywords);
+      const loadSearchData = async () => {
+        try {
+          // 인기 검색어 로드
+          const topKeywords = await searchService.getTopKeywords(5);
+          const formattedKeywords = topKeywords.map((item, index) => ({
+            term: item.keyword,
+            rank: index + 1,
+            count: item.search_count,
+            change: 0 // 실제로는 이전 순위와 비교해서 계산
+          }));
+          setHotSearchTerms(formattedKeywords);
+          
+          // 최근 검색어 로드
+          const recentKeywords = await searchService.getRecentKeywords(8);
+          setSearchHistory(recentKeywords.map(item => item.keyword));
+        } catch (error) {
+          console.error('❌ 검색 데이터 로드 실패:', error);
+          setHotSearchTerms([]);
+          setSearchHistory([]);
+        }
+      };
       
-      // 최근 검색어 로드
-      const recentKeywords = sessionSearchService.getRecentKeywords(8);
-      setSearchHistory(recentKeywords.map(item => item.keyword));
+      loadSearchData();
     }
   }, [isOpen]);
 
   const handleSearch = (query: string) => {
     if (query.trim()) {
-      // 세션 스토리지에 검색어 추가
-      sessionSearchService.addSearchKeyword(query.trim());
-      
-      // 검색 결과 페이지로 이동
+      // 검색 결과 페이지로 이동 (검색어 추가는 searchService.search()에서 자동 처리됨)
       navigate(`/search?q=${encodeURIComponent(query.trim())}`);
       onClose();
       setSearchQuery(''); // 검색어 초기화
@@ -193,8 +200,7 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose }) => {
                     cursor="pointer"
                     _hover={{ color: 'gray.300' }}
                     onClick={() => {
-                      // 세션에서 모든 검색어 삭제
-                      searchHistory.forEach(term => sessionSearchService.removeKeyword(term));
+                      // UI에서만 검색어 제거 (Supabase에서는 영구 삭제 기능 없음)
                       setSearchHistory([]);
                     }}
                   >
@@ -231,8 +237,7 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose }) => {
                         variant="ghost"
                         onClick={(e) => {
                           e.stopPropagation();
-                          // 실제 세션에서도 삭제
-                          sessionSearchService.removeKeyword(term);
+                          // UI에서만 검색어 제거 (Supabase에서는 영구 삭제 기능 없음)
                           setSearchHistory(prev => prev.filter((_, i) => i !== index));
                         }}
                       />

@@ -19,6 +19,34 @@ import LevelBadge from './UserLevel/LevelBadge';
 import PromotionBadge from './PromotionBadge';
 import { getUserDisplayLevel } from '../services/userLevelService';
 
+// HTML 태그를 제거하는 유틸리티 함수
+const stripHtmlTags = (html: string): string => {
+  if (!html) return '';
+  
+  // HTML 태그 제거
+  let stripped = html.replace(/<[^>]*>/g, '');
+  
+  // HTML 엔티티 디코딩
+  stripped = stripped
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'");
+  
+  // 여러 공백을 하나로 정리
+  stripped = stripped.replace(/\s+/g, ' ').trim();
+  
+  // 길이 제한 (카드에 맞게)
+  if (stripped.length > 150) {
+    stripped = stripped.substring(0, 147) + '...';
+  }
+  
+  return stripped;
+};
+
 interface CardProps {
   type: 'story' | 'lounge';
   id: number;
@@ -35,6 +63,7 @@ interface CardProps {
   scrapCount?: number;
   author?: string;
   authorId?: number;
+  authorVerified?: boolean;
   promotionStatus?: 'eligible' | 'pending' | 'approved' | 'rejected' | null;
   promotionNote?: string;
 }
@@ -55,6 +84,7 @@ const Card: React.FC<CardProps> = ({
   scrapCount,
   author,
   authorId,
+  authorVerified,
   promotionStatus,
   promotionNote,
 }) => {
@@ -63,15 +93,15 @@ const Card: React.FC<CardProps> = ({
   
   const getBadgeVariant = (loungeType?: string) => {
     switch (loungeType) {
-      case 'question': return 'question';
-      case 'experience': return 'experience';
-      case 'info': return 'help';
-      case 'free': return 'story';
+      case 'question': return 'blue';
+      case 'experience': return 'green';
+      case 'info': return 'purple';
+      case 'free': return 'gray';
       case 'news': return 'orange';
-      case 'advice': return 'purple';
-      case 'recommend': return 'green';
-      case 'anonymous': return 'gray';
-      default: return 'story';
+      case 'advice': return 'teal';
+      case 'recommend': return 'pink';
+      case 'anonymous': return 'red';
+      default: return 'gray';
     }
   };
 
@@ -118,7 +148,7 @@ const Card: React.FC<CardProps> = ({
             <VStack align="stretch" spacing={2}>
               {type === 'lounge' && loungeType && (
                 <HStack>
-                  <Badge variant={getBadgeVariant(loungeType)} size="sm">
+                  <Badge colorScheme={getBadgeVariant(loungeType)} size="sm">
                     {getBadgeText(loungeType)}
                   </Badge>
                   {isExcellent && (
@@ -158,7 +188,7 @@ const Card: React.FC<CardProps> = ({
                 lineHeight="1.5"
                 noOfLines={3}
               >
-                {summary}
+                {stripHtmlTags(summary)}
               </Text>
             )}
           </VStack>
@@ -186,17 +216,21 @@ const Card: React.FC<CardProps> = ({
                   >
                     {author}
                   </Text>
-                  {authorId && (
-                    <LevelBadge 
-                      level={getUserDisplayLevel(authorId).level} 
-                      size="xs" 
-                      variant="subtle"
-                      showIcon={true}
-                    />
+                  {authorVerified ? (
+                    <Badge colorScheme="green" size="sm">인사담당자</Badge>
+                  ) : (
+                    authorId && (
+                      <LevelBadge 
+                        level={getUserDisplayLevel(authorId).level} 
+                        size="xs" 
+                        variant="subtle"
+                        showIcon={true}
+                      />
+                    )
                   )}
                 </HStack>
                 <Text fontSize="xs" color={colorMode === 'dark' ? '#7e7e87' : '#626269'}>
-                  {dayjs(createdAt).format('YYYY.MM.DD')}
+                  {dayjs(createdAt).format('YYYY.MM.DD HH:mm')}
                 </Text>
               </HStack>
             )}

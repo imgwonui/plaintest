@@ -49,7 +49,19 @@ import {
 import { AddIcon, EditIcon, DeleteIcon } from '@chakra-ui/icons';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { tagCategories, TagCategory, Tag as TagType, getAllTags } from '../data/tags';
+import { 
+  tagCategories, 
+  TagCategory, 
+  Tag as TagType, 
+  getAllTags, 
+  getAllTagsAsync,
+  getDynamicTagCategories,
+  addTag,
+  updateTag,
+  deleteTag,
+  initializeTags
+} from '../data/tags';
+import { storyService, loungeService } from '../services/supabaseDataService';
 
 const AdminTags: React.FC = () => {
   const { colorMode } = useColorMode();
@@ -68,6 +80,8 @@ const AdminTags: React.FC = () => {
   const [editTagName, setEditTagName] = useState('');
   const [deletingTag, setDeletingTag] = useState<TagType | null>(null);
   const [tags, setTags] = useState<TagType[]>([]);
+  const [tagUsageStats, setTagUsageStats] = useState<Record<string, number>>({});
+  const [lastDeleteAttempt, setLastDeleteAttempt] = useState<string | null>(null);
   
   // 관리자가 아니면 홈으로 리다이렉트
   useEffect(() => {
@@ -76,11 +90,51 @@ const AdminTags: React.FC = () => {
       return;
     }
     
-    // 태그 데이터 로드
-    setTags(getAllTags());
+    // 태그 데이터 로드 및 실제 사용량 계산
+    loadTagsData();
   }, [isAdmin, navigate]);
 
-  const handleAddTag = () => {
+  const loadTagsData = async () => {
+    try {
+      // localStorage에서 커스텀 태그 초기화
+      initializeTags();
+      
+      // 태그 목록 로드 (데이터베이스 포함, 비동기)
+      const allTags = await getAllTagsAsync();
+      setTags(allTags);
+      console.log('📝 태그 목록 로드됨:', allTags.length, '개');
+      
+      // 실제 사용량 계산을 위해 Supabase 데이터 로드
+      const [storiesResult, loungeResult] = await Promise.all([
+        storyService.getAll(1, 1000),
+        loungeService.getAll(1, 1000)
+      ]);
+      
+      const stories = storiesResult.stories || [];
+      const loungePosts = loungeResult.posts || [];
+      
+      // 태그 사용량 계산
+      const usage: Record<string, number> = {};
+      
+      [...stories, ...loungePosts].forEach(item => {
+        if (item.tags && Array.isArray(item.tags)) {
+          item.tags.forEach((tagId: string) => {
+            usage[tagId] = (usage[tagId] || 0) + 1;
+          });
+        }
+      });
+      
+      setTagUsageStats(usage);
+      console.log('✅ 태그 사용량 통계 로드 완료:', usage);
+      
+    } catch (error) {
+      console.error('❌ 태그 데이터 로드 실패:', error);
+      setTags(getAllTags()); // 기본 태그라도 표시
+      setTagUsageStats({});
+    }
+  };
+
+  const handleAddTag = async () => {
     if (!newTagName.trim() || !newTagId.trim()) {
       toast({
         title: "태그 이름과 ID를 모두 입력해주세요",
@@ -100,25 +154,60 @@ const AdminTags: React.FC = () => {
       return;
     }
 
-    const newTag: TagType = {
-      id: newTagId,
-      name: newTagName,
-      category: selectedCategory
-    };
+    try {
+      const newTag: TagType = {
+        id: newTagId,
+        name: newTagName,
+        category: selectedCategory
+      };
 
-    // 실제 구현에서는 여기서 API 호출이나 데이터 저장이 필요
-    console.log('새 태그 추가:', newTag);
-    
-    toast({
-      title: "태그가 추가되었습니다",
-      description: `"${newTagName}" 태그가 성공적으로 추가되었습니다.`,
-      status: "success",
-      duration: 3000,
-    });
-    
-    setNewTagName('');
-    setNewTagId('');
-    onAddClose();
+      // 실제로 태그 추가 (비동기)
+      const success = await addTag(newTag);
+      
+      if (success) {
+        // 상태 업데이트 (비동기로 최신 태그 목록 가져오기)
+        const updatedTags = await getAllTagsAsync();
+        setTags(updatedTags);
+        
+        // 새로 추가된 태그의 사용량을 0으로 설정
+        setTagUsageStats(prev => ({
+          ...prev,
+          [newTagId]: 0
+        }));
+        
+        console.log('🏷️ 새 태그 추가 후 사용량 통계 업데이트:', {
+          tagId: newTagId,
+          usageCount: 0,
+          allStats: { ...tagUsageStats, [newTagId]: 0 }
+        });
+        
+        toast({
+          title: "태그가 추가되었습니다",
+          description: `"${newTagName}" 태그가 성공적으로 추가되었습니다.`,
+          status: "success",
+          duration: 3000,
+        });
+        
+        setNewTagName('');
+        setNewTagId('');
+        onAddClose();
+      } else {
+        toast({
+          title: "태그 추가 실패",
+          description: "태그 추가 중 오류가 발생했습니다.",
+          status: "error",
+          duration: 3000,
+        });
+      }
+    } catch (error) {
+      console.error('태그 추가 에러:', error);
+      toast({
+        title: "태그 추가 실패", 
+        description: "태그 추가 중 오류가 발생했습니다.",
+        status: "error",
+        duration: 3000,
+      });
+    }
   };
 
   const handleEditTag = (tag: TagType) => {
@@ -127,7 +216,7 @@ const AdminTags: React.FC = () => {
     onEditOpen();
   };
 
-  const handleUpdateTag = () => {
+  const handleUpdateTag = async () => {
     if (!editTagName.trim()) {
       toast({
         title: "태그 이름을 입력해주세요",
@@ -138,19 +227,42 @@ const AdminTags: React.FC = () => {
     }
 
     if (editingTag) {
-      // 실제 구현에서는 여기서 API 호출이나 데이터 업데이트가 필요
-      console.log('태그 수정:', editingTag.id, '→', editTagName);
-      
-      toast({
-        title: "태그가 수정되었습니다",
-        description: `"${editingTag.name}" → "${editTagName}"으로 변경되었습니다.`,
-        status: "success",
-        duration: 3000,
-      });
-      
-      setEditingTag(null);
-      setEditTagName('');
-      onEditClose();
+      try {
+        // 실제로 태그 수정 (비동기)
+        const success = await updateTag(editingTag.id, editTagName);
+        
+        if (success) {
+          // 상태 업데이트 (비동기로 최신 태그 목록 가져오기)
+          const updatedTags = await getAllTagsAsync();
+          setTags(updatedTags);
+          
+          toast({
+            title: "태그가 수정되었습니다",
+            description: `"${editingTag.name}" → "${editTagName}"으로 변경되었습니다.`,
+            status: "success",
+            duration: 3000,
+          });
+          
+          setEditingTag(null);
+          setEditTagName('');
+          onEditClose();
+        } else {
+          toast({
+            title: "태그 수정 실패",
+            description: "태그 수정 중 오류가 발생했습니다.",
+            status: "error",
+            duration: 3000,
+          });
+        }
+      } catch (error) {
+        console.error('태그 수정 에러:', error);
+        toast({
+          title: "태그 수정 실패",
+          description: "태그 수정 중 오류가 발생했습니다.",
+          status: "error",
+          duration: 3000,
+        });
+      }
     }
   };
 
@@ -159,17 +271,62 @@ const AdminTags: React.FC = () => {
     onDeleteOpen();
   };
 
-  const confirmDeleteTag = () => {
+  const confirmDeleteTag = async () => {
     if (deletingTag) {
-      // 실제 구현에서는 여기서 API 호출이나 데이터 삭제가 필요
-      console.log('태그 삭제:', deletingTag);
+      // 사용 중인 태그인지 체크
+      const usageCount = tagUsageStats[deletingTag.id] || 0;
+      if (usageCount > 0) {
+        toast({
+          title: "삭제할 수 없습니다",
+          description: `"${deletingTag.name}" 태그는 현재 ${usageCount}개의 글에서 사용 중입니다. 강제 삭제하려면 다시 한번 삭제를 눌러주세요.`,
+          status: "warning",
+          duration: 5000,
+        });
+        
+        // 강제 삭제를 위한 플래그 추가 (두 번 클릭하면 삭제)
+        if (deletingTag.id === lastDeleteAttempt) {
+          console.log('🗑️ 강제 삭제 실행:', deletingTag.name);
+          // 강제 삭제 진행
+        } else {
+          setLastDeleteAttempt(deletingTag.id);
+          setDeletingTag(null);
+          onDeleteClose();
+          return;
+        }
+      }
       
-      toast({
-        title: "태그가 삭제되었습니다",
-        description: `"${deletingTag.name}" 태그가 삭제되었습니다.`,
-        status: "success",
-        duration: 3000,
-      });
+      try {
+        // 실제로 태그 삭제 (비동기)
+        const success = await deleteTag(deletingTag.id);
+        
+        if (success) {
+          // 상태 업데이트 (비동기로 최신 태그 목록 가져오기)
+          const updatedTags = await getAllTagsAsync();
+          setTags(updatedTags);
+          
+          toast({
+            title: "태그가 삭제되었습니다",
+            description: `"${deletingTag.name}" 태그가 삭제되었습니다.`,
+            status: "success",
+            duration: 3000,
+          });
+        } else {
+          toast({
+            title: "태그 삭제 실패",
+            description: "태그 삭제 중 오류가 발생했습니다.",
+            status: "error",
+            duration: 3000,
+          });
+        }
+      } catch (error) {
+        console.error('태그 삭제 에러:', error);
+        toast({
+          title: "태그 삭제 실패",
+          description: "태그 삭제 중 오류가 발생했습니다.",
+          status: "error",
+          duration: 3000,
+        });
+      }
       
       setDeletingTag(null);
       onDeleteClose();
@@ -177,11 +334,11 @@ const AdminTags: React.FC = () => {
   };
 
   const getCategoryName = (categoryId: string) => {
-    const category = tagCategories.find(cat => cat.id === categoryId);
+    const category = getDynamicTagCategories().find(cat => cat.id === categoryId);
     return category ? category.name : categoryId;
   };
 
-  const getTagsByCategory = (categoryId: string) => {
+  const getTagsByCategoryLocal = (categoryId: string) => {
     return tags.filter(tag => tag.category === categoryId);
   };
 
@@ -225,7 +382,7 @@ const AdminTags: React.FC = () => {
               </StatHelpText>
             </Stat>
 
-            {tagCategories.slice(0, 3).map(category => (
+            {getDynamicTagCategories().slice(0, 3).map(category => (
               <Stat 
                 key={category.id}
                 p={6} 
@@ -235,7 +392,7 @@ const AdminTags: React.FC = () => {
               >
                 <StatLabel color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>{category.name}</StatLabel>
                 <StatNumber color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}>
-                  {getTagsByCategory(category.id).length}
+                  {getTagsByCategoryLocal(category.id).length}
                 </StatNumber>
                 <StatHelpText color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
                   개 태그
@@ -261,8 +418,8 @@ const AdminTags: React.FC = () => {
 
         {/* 카테고리별 태그 목록 */}
         <VStack spacing={6} align="stretch">
-          {tagCategories.map(category => {
-            const categoryTags = getTagsByCategory(category.id);
+          {getDynamicTagCategories().map(category => {
+            const categoryTags = getTagsByCategoryLocal(category.id);
             return (
               <Card 
                 key={category.id}
@@ -292,6 +449,7 @@ const AdminTags: React.FC = () => {
                           <Tr>
                             <Th color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>ID</Th>
                             <Th color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>이름</Th>
+                            <Th color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>사용량</Th>
                             <Th color={colorMode === 'dark' ? '#9e9ea4' : '#626269'} width="100px">액션</Th>
                           </Tr>
                         </Thead>
@@ -305,6 +463,15 @@ const AdminTags: React.FC = () => {
                               </Td>
                               <Td color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}>
                                 {tag.name}
+                              </Td>
+                              <Td>
+                                <Badge 
+                                  colorScheme={(tagUsageStats[tag.id] || 0) > 10 ? 'green' : (tagUsageStats[tag.id] || 0) > 5 ? 'blue' : 'gray'}
+                                  size="sm"
+                                >
+                                  {tagUsageStats[tag.id] || 0}회 사용
+                                  {tagUsageStats[tag.id] === undefined && ' (undefined)'}
+                                </Badge>
                               </Td>
                               <Td>
                                 <HStack spacing={2}>
@@ -321,7 +488,16 @@ const AdminTags: React.FC = () => {
                                     size="sm"
                                     variant="ghost"
                                     colorScheme="red"
-                                    onClick={() => handleDeleteTag(tag)}
+                                    onClick={() => {
+                                      console.log('🔍 삭제 버튼 클릭:', {
+                                        tagId: tag.id,
+                                        tagName: tag.name,
+                                        usageCount: tagUsageStats[tag.id],
+                                        tagUsageStats: tagUsageStats
+                                      });
+                                      handleDeleteTag(tag);
+                                    }}
+                                    isDisabled={false}
                                   />
                                 </HStack>
                               </Td>

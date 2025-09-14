@@ -26,7 +26,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { CloseIcon } from '@chakra-ui/icons';
 import WYSIWYGEditor from '../components/WYSIWYGEditor';
-import { sessionStoryService } from '../services/sessionDataService';
+import { storyService } from '../services/supabaseDataService';
 import { useAuth } from '../contexts/AuthContext';
 import TagSelector from '../components/TagSelector';
 
@@ -128,28 +128,32 @@ const StoryNew: React.FC = () => {
       const imageUrl = thumbnailPreview;
       
       // 스토리 생성
-      console.log('🔍 스토리 생성 전 검수 배지 상태:', {
-        isVerified,
-        verificationBadge
+      console.log('🔍 스토리 생성 전 검수 상태:', {
+        isVerified
       });
       
-      const newStory = sessionStoryService.create({
+      console.log('📝 스토리 생성 데이터 준비:', {
         title: title.trim(),
         content: content.trim(),
         summary: summary.trim(),
-        author: user?.name || '관리자',
+        author_name: user?.name || '관리자'
+      });
+      
+      const newStory = await storyService.create({
+        title: title.trim(),
+        content: content.trim(),
+        summary: summary.trim(),
+        author_name: user?.name || '관리자',
+        author_id: user?.id,
+        image_url: imageUrl,
+        read_time: readTime,
         tags: selectedTags,
-        readTime,
-        imageUrl,
-        isVerified,
-        verificationBadge: isVerified ? verificationBadge : undefined,
-        isFromLounge: false
+        is_verified: isVerified
       });
       
       console.log('✅ 새 스토리가 생성되었습니다:', newStory);
-      console.log('🔍 생성된 스토리의 검수 배지 정보:', {
-        isVerified: newStory.isVerified,
-        verificationBadge: newStory.verificationBadge
+      console.log('🔍 생성된 스토리의 검수 정보:', {
+        is_verified: newStory.is_verified
       });
       
       toast({

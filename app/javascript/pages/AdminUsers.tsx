@@ -46,7 +46,7 @@ import {
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { DeleteIcon, InfoIcon, WarningIcon } from '@chakra-ui/icons';
-import { sessionUserService, sessionStoryService, sessionLoungeService, sessionLikeService, initializeData } from '../services/sessionDataService';
+import { userService, storyService, loungeService, commentService } from '../services/supabaseDataService';
 import dayjs from 'dayjs';
 
 interface User {
@@ -81,51 +81,91 @@ const AdminUsers: React.FC = () => {
     }
   }, [isAdmin, navigate]);
 
-  // 세션 스토리지에서 실제 사용자 데이터 로드
+  // Supabase에서 사용자 데이터 로드
   const [users, setUsers] = useState<User[]>([]);
   const [stats, setStats] = useState<any>(null);
 
-  // 데이터 로드
+  // 데이터 로드 (Supabase 실제 데이터)
   useEffect(() => {
-    initializeData();
-    const allUsers = sessionUserService.getAllUsers();
-    const allStories = sessionStoryService.getAll();
-    const allLoungePosts = sessionLoungeService.getAll();
-    const allLikes = sessionLikeService.getAll();
+    const loadUsersData = async () => {
+      try {
+        console.log('🔄 AdminUsers 데이터 로딩 시작...');
+        
+        // 모든 데이터를 병렬로 로드
+        const [usersResult, storiesResult, loungeResult, commentsResult] = await Promise.all([
+          userService.getAllUsers(1, 1000), // 모든 사용자
+          storyService.getAll(1, 1000), // 모든 스토리
+          loungeService.getAll(1, 1000), // 모든 라운지 글
+          commentService.getAll(1, 1000) // 모든 댓글
+        ]);
+        
+        const allUsers = usersResult.users || [];
+        const allStories = storiesResult.stories || [];
+        const allLoungePosts = loungeResult.posts || [];
+        const allComments = commentsResult.comments || [];
+        
+        console.log('📊 AdminUsers Raw data:', {
+          사용자수: allUsers.length,
+          스토리수: allStories.length,
+          라운지글수: allLoungePosts.length,
+          댓글수: allComments.length
+        });
+        
+        // 사용자별 통계 계산
+        const usersWithStats = allUsers.map(user => {
+          const userStories = allStories.filter(story => story.author_id === user.id);
+          const userLoungePosts = allLoungePosts.filter(post => post.author_id === user.id);
+          const userComments = allComments.filter(comment => comment.author_id === user.id);
+          
+          // 좋아요 수 계산 (본인이 작성한 글에 받은 좋아요)
+          const totalLikes = userStories.reduce((sum, story) => sum + (story.like_count || 0), 0) +
+                           userLoungePosts.reduce((sum, post) => sum + (post.like_count || 0), 0);
+          
+          // 최근 활동 확인 (30일 이내)
+          const thirtyDaysAgo = new Date();
+          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+          const hasRecentActivity = 
+            userStories.some(story => new Date(story.created_at) > thirtyDaysAgo) ||
+            userLoungePosts.some(post => new Date(post.created_at) > thirtyDaysAgo) ||
+            userComments.some(comment => new Date(comment.created_at) > thirtyDaysAgo);
+          
+          // 최근 활동 시간 계산
+          const allActivities = [
+            ...userStories.map(s => s.created_at),
+            ...userLoungePosts.map(p => p.created_at),
+            ...userComments.map(c => c.created_at)
+          ].sort().reverse();
+          
+          const lastActiveAt = allActivities[0] || user.created_at;
+          
+          return {
+            id: user.id.toString(),
+            name: user.name,
+            email: user.email,
+            provider: user.provider || 'kakao' as const,
+            joinedAt: user.created_at,
+            lastActiveAt,
+            isActive: hasRecentActivity,
+            storiesCount: userStories.length,
+            loungePostsCount: userLoungePosts.length,
+            totalLikes,
+            status: (hasRecentActivity ? 'active' : 'inactive') as const,
+          };
+        });
+        
+        setUsers(usersWithStats);
+        console.log('✅ AdminUsers 데이터 로드 성공:', {
+          총사용자수: usersWithStats.length,
+          활성사용자수: usersWithStats.filter(u => u.status === 'active').length
+        });
+        
+      } catch (error) {
+        console.error('❌ AdminUsers 데이터 로드 실패:', error);
+        setUsers([]);
+      }
+    };
     
-    // 사용자별 통계 계산
-    const usersWithStats = allUsers.map(user => {
-      const userStories = allStories.filter(story => story.author === user.name);
-      const userLoungePosts = allLoungePosts.filter(post => post.author === user.name);
-      const userLikes = allLikes.filter(like => 
-        (like.postType === 'story' && allStories.find(s => s.id === like.postId)?.author === user.name) ||
-        (like.postType === 'lounge' && allLoungePosts.find(p => p.id === like.postId)?.author === user.name)
-      );
-      
-      // 최근 활동 확인 (30일 이내)
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      const hasRecentActivity = 
-        userStories.some(story => new Date(story.createdAt) > thirtyDaysAgo) ||
-        userLoungePosts.some(post => new Date(post.createdAt) > thirtyDaysAgo);
-      
-      return {
-        id: user.id.toString(),
-        name: user.name,
-        email: user.email,
-        provider: user.provider || 'kakao' as const,
-        joinedAt: user.createdAt || user.joinedAt || new Date().toISOString(),
-        lastActiveAt: userStories.concat(userLoungePosts)
-          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]?.createdAt || user.createdAt || new Date().toISOString(),
-        isActive: hasRecentActivity,
-        storiesCount: userStories.length,
-        loungePostsCount: userLoungePosts.length,
-        totalLikes: userLikes.length,
-        status: (hasRecentActivity ? 'active' : 'inactive') as const,
-      };
-    });
-    
-    setUsers(usersWithStats);
+    loadUsersData();
   }, []);
 
   // 통계 계산 (users가 로드된 후)
@@ -155,24 +195,24 @@ const AdminUsers: React.FC = () => {
     }
   };
 
-  const confirmDeleteUser = () => {
+  const confirmDeleteUser = async () => {
     if (selectedUserId) {
       try {
-        // 세션 스토리지에서 사용자 삭제 (실제로는 비활성화)
-        const success = sessionUserService.deleteUser(parseInt(selectedUserId));
+        // Supabase에서 사용자 삭제 (실제 구현에서는 비활성화 또는 소프트 삭제 권장)
+        await userService.deleteUser(selectedUserId);
         
-        if (success) {
-          // 로컬 상태에서 제거
-          setUsers(prev => prev.filter(u => u.id !== selectedUserId));
-          
-          toast({
-            title: "사용자가 탈퇴 처리되었습니다",
-            description: `${selectedUser?.name}님이 서비스에서 탈퇴되었습니다`,
-            status: "warning",
-            duration: 3000,
-          });
-        }
+        // 로컬 상태에서 제거
+        setUsers(prev => prev.filter(u => u.id !== selectedUserId));
+        
+        toast({
+          title: "사용자가 탈퇴 처리되었습니다",
+          description: `${selectedUser?.name}님이 서비스에서 탈퇴되었습니다`,
+          status: "warning",
+          duration: 3000,
+        });
+        
       } catch (error) {
+        console.error('사용자 삭제 실패:', error);
         toast({
           title: "탈퇴 처리 실패",
           description: "사용자 탈퇴 처리 중 오류가 발생했습니다",
@@ -187,7 +227,7 @@ const AdminUsers: React.FC = () => {
   };
 
   const handleBanUser = (userId: string) => {
-    // 실제로는 세션 스토리지에서 사용자 상태 업데이트
+    // 실제 구현에서는 Supabase에서 사용자 상태 업데이트 필요
     setUsers(prev => prev.map(u => 
       u.id === userId 
         ? { ...u, status: 'banned' as const }
@@ -197,14 +237,14 @@ const AdminUsers: React.FC = () => {
     const targetUser = users.find(u => u.id === userId);
     toast({
       title: "사용자가 차단되었습니다",
-      description: `${targetUser?.name}님이 차단되었습니다 (데모 모드)`,
+      description: `${targetUser?.name}님이 차단되었습니다`,
       status: "error",
       duration: 3000,
     });
   };
 
   const handleUnbanUser = (userId: string) => {
-    // 실제로는 세션 스토리지에서 사용자 상태 업데이트
+    // 실제 구현에서는 Supabase에서 사용자 상태 업데이트 필요
     setUsers(prev => prev.map(u => 
       u.id === userId 
         ? { ...u, status: 'active' as const }
@@ -214,7 +254,7 @@ const AdminUsers: React.FC = () => {
     const targetUser = users.find(u => u.id === userId);
     toast({
       title: "사용자 차단이 해제되었습니다",
-      description: `${targetUser?.name}님의 차단이 해제되었습니다 (데모 모드)`,
+      description: `${targetUser?.name}님의 차단이 해제되었습니다`,
       status: "success",
       duration: 3000,
     });

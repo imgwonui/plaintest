@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 
-// 환경 변수가 없을 때는 더미 값 사용 (API 연결 전까지)
-const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || 'https://dummy.supabase.co'
-const supabaseKey = process.env.REACT_APP_SUPABASE_ANON_KEY || 'dummy-key'
+// Supabase 연결 설정
+const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || 'https://tbmlxkbdugppyxpzpatx.supabase.co'
+const supabaseKey = process.env.REACT_APP_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRibWx4a2JkdWdwcHl4cHpwYXR4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTczODgyNjcsImV4cCI6MjA3Mjk2NDI2N30.cpO3YykJ0RV4bbsAy_zvBn9zaM54R-qtTfaoR1Nymtg'
 
-// API 연결 전까지는 에러를 발생시키지 않음
+// Supabase 클라이언트 생성
 export const supabase = createClient(supabaseUrl, supabaseKey)

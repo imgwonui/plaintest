@@ -43,7 +43,7 @@ import SEOHead from '../components/SEOHead';
 import { useAuth } from '../contexts/AuthContext';
 // 타입은 API 타입으로 교체 예정
 type LoungePost = any;
-import { sessionLoungeService, sessionUserService, initializeData } from '../services/sessionDataService';
+import { loungeService, userService } from '../services/supabaseDataService';
 import { getAllTags, getTagById } from '../data/tags';
 import TagSelector from '../components/TagSelector';
 import LevelBadge from '../components/UserLevel/LevelBadge';
@@ -67,36 +67,62 @@ const LoungeList: React.FC = () => {
   const [popularitySort, setPopularitySort] = useState<PopularitySort>('likes');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>('card');
   const [rewardPost, setRewardPost] = useState<LoungePost | null>(null);
   const [activeTab, setActiveTab] = useState<'all' | 'popular'>('all');
   const [loungePosts, setLoungePosts] = useState<LoungePost[]>([]);
 
   // 데이터 로드 함수
-  const loadPosts = () => {
-    initializeData();
-    const posts = sessionLoungeService.getAll();
-    console.log('라운지 포스트 로드:', posts.length, '개', posts.map(p => p.title));
-    
-    // 새로운 배열 객체 생성 (React 상태 업데이트 보장)
-    setLoungePosts([...posts]);
-    
-    // 좋아요 50개 이상인 글 체크
-    const highLikePosts = posts.filter(post => post.likeCount >= 50 && !post.rewardClaimed);
-    if (highLikePosts.length > 0) {
-      // 실제로는 사용자의 글인지 체크해야 함
-      const userPost = highLikePosts[0]; // 임시로 첫 번째 글
-      setRewardPost(userPost);
-      setTimeout(() => onRewardOpen(), 1000); // 1초 후 모달 표시
+  const loadPosts = async () => {
+    try {
+      setIsLoading(true);
+      
+      let posts;
+      if (activeTab === 'popular') {
+        const response = await loungeService.getPopular(1, 100);
+        posts = response.posts || [];
+      } else {
+        const response = await loungeService.getAll(1, 100, typeFilter === 'all' ? undefined : typeFilter);
+        posts = response.posts || [];
+      }
+      
+      console.log('✅ 라운지 포스트 로드 성공:', posts.length, '개');
+      setLoungePosts(posts);
+      
+      // 좋아요 50개 이상인 글 체크 (사용자의 글만)
+      if (user) {
+        const userHighLikePosts = posts.filter(post => 
+          post.author_id === user.id && 
+          post.like_count >= 50 && 
+          !post.reward_claimed
+        );
+        
+        if (userHighLikePosts.length > 0) {
+          setRewardPost(userHighLikePosts[0]);
+          setTimeout(() => onRewardOpen(), 1000);
+        }
+      }
+      
+    } catch (error) {
+      console.error('❌ 라운지 포스트 로드 실패:', error);
+      toast({
+        title: "데이터 로드 실패",
+        description: "라운지 글을 불러오는 중 오류가 발생했습니다.",
+        status: "error",
+        duration: 5000,
+      });
+      setLoungePosts([]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  // 세션 데이터 로드 - 페이지 로드 시마다 실행
+  // 데이터 로드 - 페이지 로드 시 및 탭/필터 변경시
   useEffect(() => {
-    console.log('LoungeList 컴포넌트 마운트됨');
+    console.log('LoungeList 컴포넌트 마운트됨 또는 필터 변경됨');
     loadPosts();
-  }, []);
+  }, [activeTab, typeFilter]);
 
   // location 변경될 때마다 데이터 새로고침 (글 작성 후 돌아올 때 핵심!)
   useEffect(() => {
@@ -105,14 +131,7 @@ const LoungeList: React.FC = () => {
       console.log('라운지 페이지 진입 - 새로고침 시작');
       loadPosts();
     }
-  }, [location.pathname, location.state?.timestamp]); // timestamp도 의존성에 추가
-
-  // onRewardOpen 변경될 때도 한 번 로드
-  useEffect(() => {
-    if (onRewardOpen) {
-      loadPosts();
-    }
-  }, [onRewardOpen]);
+  }, [location.pathname, location.state?.timestamp]);
 
   // 페이지가 포커스될 때마다 데이터 새로고침 (글 작성 후 돌아올 때)
   useEffect(() => {
@@ -148,9 +167,9 @@ const LoungeList: React.FC = () => {
     
     let filtered = loungePosts;
 
-    // 탭 필터링 (인기글은 좋아요 50개 이상)
+    // 탭 필터링 (인기글은 이미 서버에서 필터링됨)
     if (activeTab === 'popular') {
-      filtered = filtered.filter(post => post.likeCount >= 50);
+      filtered = filtered.filter(post => post.is_excellent);
       console.log('👍 인기글 필터 후:', filtered.length, '개');
     }
 
@@ -171,16 +190,16 @@ const LoungeList: React.FC = () => {
     // 정렬
     const sorted = [...filtered].sort((a, b) => {
       if (sortBy === 'latest') {
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
       }
       // 인기순은 설정된 기준에 따라 정렬
       let scoreA: number, scoreB: number;
       if (popularitySort === 'likes') {
-        scoreA = a.likeCount * 2 + a.commentCount;
-        scoreB = b.likeCount * 2 + b.commentCount;
+        scoreA = a.like_count * 2 + a.comment_count;
+        scoreB = b.like_count * 2 + b.comment_count;
       } else {
-        scoreA = a.scrapCount * 2 + a.commentCount;
-        scoreB = b.scrapCount * 2 + b.commentCount;
+        scoreA = a.scrap_count * 2 + a.comment_count;
+        scoreB = b.scrap_count * 2 + b.comment_count;
       }
       return scoreB - scoreA;
     });
@@ -507,16 +526,16 @@ const LoungeList: React.FC = () => {
                     type="lounge"
                     id={post.id}
                     title={post.title}
-                    summary={post.summary}
+                    summary={post.content}
                     tags={post.tags}
-                    createdAt={post.createdAt}
+                    createdAt={post.created_at}
                     loungeType={post.type}
-                    isExcellent={post.isExcellent}
-                    likeCount={post.likeCount}
-                    commentCount={post.commentCount}
-                    scrapCount={post.scrapCount}
-                    author={post.author}
-                    authorId={post.author ? sessionUserService.getUserIdByName(post.author) : undefined}
+                    isExcellent={post.is_excellent}
+                    likeCount={post.like_count}
+                    commentCount={post.comment_count}
+                    scrapCount={post.scrap_count}
+                    author={post.author_name}
+                    authorId={post.author_id}
                   />
                 ))}
               </SimpleGrid>
@@ -543,14 +562,14 @@ const LoungeList: React.FC = () => {
                     {filteredAndSortedPosts.map((post) => {
                       const getTypeBadge = (type: string) => {
                         const typeMap: Record<string, { label: string; colorScheme: string }> = {
-                          'question': { label: '질문', colorScheme: 'blue' },
-                          'experience': { label: '경험담', colorScheme: 'green' },
-                          'info': { label: '정보', colorScheme: 'purple' },
-                          'free': { label: '자유', colorScheme: 'gray' },
-                          'news': { label: '뉴스', colorScheme: 'orange' },
-                          'advice': { label: '고민', colorScheme: 'teal' },
-                          'recommend': { label: '추천', colorScheme: 'pink' },
-                          'anonymous': { label: '익명', colorScheme: 'red' },
+                          'question': { label: '질문/Q&A', colorScheme: 'blue' },
+                          'experience': { label: '경험담/사연 공유', colorScheme: 'green' },
+                          'info': { label: '정보·팁 공유', colorScheme: 'purple' },
+                          'free': { label: '자유글/잡담', colorScheme: 'gray' },
+                          'news': { label: '뉴스에 한마디', colorScheme: 'orange' },
+                          'advice': { label: '같이 고민해요', colorScheme: 'teal' },
+                          'recommend': { label: '추천해주세요', colorScheme: 'pink' },
+                          'anonymous': { label: '익명 토크', colorScheme: 'red' },
                         };
                         const config = typeMap[type] || { label: type, colorScheme: 'gray' };
                         return <Badge colorScheme={config.colorScheme} size="sm">{config.label}</Badge>;
@@ -576,7 +595,7 @@ const LoungeList: React.FC = () => {
                                 >
                                   {post.title}
                                 </Text>
-                                {post.isExcellent && (
+                                {post.is_excellent && (
                                   <Badge colorScheme="yellow" size="sm">우수</Badge>
                                 )}
                               </HStack>
@@ -594,14 +613,14 @@ const LoungeList: React.FC = () => {
                           </Td>
                           <Td>
                             <HStack>
-                              <Avatar size="xs" name={post.author} />
+                              <Avatar size="xs" name={post.author_name} />
                               <VStack spacing={0} align="start">
                                 <Text fontSize="sm" color={colorMode === 'dark' ? '#c3c3c6' : '#4d4d59'}>
-                                  {post.author}
+                                  {post.author_name}
                                 </Text>
-                                {post.author && (
+                                {post.author_id && (
                                   <LevelBadge 
-                                    level={getUserDisplayLevel(sessionUserService.getUserIdByName(post.author) || 1).level} 
+                                    level={getUserDisplayLevel(post.author_id).level} 
                                     size="xs" 
                                     variant="subtle"
                                     showIcon={true}
@@ -614,15 +633,15 @@ const LoungeList: React.FC = () => {
                           <Td textAlign="center">
                             <Text 
                               fontSize="sm" 
-                              fontWeight={post.likeCount >= 50 ? "600" : "normal"}
-                              color={post.likeCount >= 50 ? "orange.500" : (colorMode === 'dark' ? '#9e9ea4' : '#626269')}
+                              fontWeight={post.like_count >= 50 ? "600" : "normal"}
+                              color={post.like_count >= 50 ? "orange.500" : (colorMode === 'dark' ? '#9e9ea4' : '#626269')}
                             >
-                              {post.likeCount}
+                              {post.like_count}
                             </Text>
                           </Td>
                           <Td textAlign="center">
                             <Text fontSize="sm" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
-                              {post.commentCount}
+                              {post.comment_count}
                             </Text>
                           </Td>
                           <Td textAlign="center">
@@ -632,7 +651,7 @@ const LoungeList: React.FC = () => {
                           </Td>
                           <Td>
                             <Text fontSize="sm" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
-                              {dayjs(post.createdAt).format('MM.DD')}
+                              {dayjs(post.created_at).format('MM.DD HH:mm')}
                             </Text>
                           </Td>
                         </Tr>

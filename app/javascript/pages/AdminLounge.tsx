@@ -43,7 +43,7 @@ import {
 } from '@chakra-ui/react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { sessionLoungeService, sessionStoryService, initializeData } from '../services/sessionDataService';
+import { loungeService, storyService } from '../services/supabaseDataService';
 import { DeleteIcon, StarIcon, EditIcon } from '@chakra-ui/icons';
 import dayjs from 'dayjs';
 
@@ -80,11 +80,20 @@ const AdminLounge: React.FC = () => {
   // Lounge 글 목록 상태
   const [adminLoungePosts, setAdminLoungePosts] = useState<any[]>([]);
 
-  // 데이터 로드
+  // 데이터 로드 (Supabase에서 실제 데이터)
   useEffect(() => {
-    initializeData();
-    const posts = sessionLoungeService.getAll();
-    setAdminLoungePosts(posts);
+    const loadLoungeData = async () => {
+      try {
+        const result = await loungeService.getAll(1, 1000); // 모든 라운지 글 로드
+        setAdminLoungePosts(result.posts || []);
+        console.log('✅ AdminLounge 데이터 로드 성공:', result.posts?.length || 0);
+      } catch (error) {
+        console.error('❌ AdminLounge 데이터 로드 실패:', error);
+        setAdminLoungePosts([]);
+      }
+    };
+    
+    loadLoungeData();
   }, []);
 
   const handleDeletePost = (postId: number) => {
@@ -92,25 +101,22 @@ const AdminLounge: React.FC = () => {
     onDeleteOpen();
   };
 
-  const confirmDeletePost = () => {
+  const confirmDeletePost = async () => {
     if (selectedPostId) {
       try {
-        // 세션 스토리지에서 글 삭제
-        const success = sessionLoungeService.delete(selectedPostId);
+        // Supabase에서 글 삭제
+        await loungeService.delete(selectedPostId);
         
-        if (success) {
-          // 로컬 상태에서 제거
-          setAdminLoungePosts(prev => prev.filter(post => post.id !== selectedPostId));
-          
-          toast({
-            title: "Lounge 글이 삭제되었습니다",
-            status: "warning",
-            duration: 3000,
-          });
-        } else {
-          throw new Error('삭제 실패');
-        }
+        // 로컬 상태에서 제거
+        setAdminLoungePosts(prev => prev.filter(post => post.id !== selectedPostId));
+        
+        toast({
+          title: "Lounge 글이 삭제되었습니다",
+          status: "warning",
+          duration: 3000,
+        });
       } catch (error) {
+        console.error('Lounge 글 삭제 실패:', error);
         toast({
           title: "삭제 실패",
           description: "Lounge 글 삭제 중 오류가 발생했습니다",
@@ -127,34 +133,29 @@ const AdminLounge: React.FC = () => {
     setSelectedPost(post);
     setPromoteForm({
       title: post.title,
-      content: post.summary || "Story로 승격된 내용입니다..."
+      content: post.content || "Story로 승격된 내용입니다..."
     });
     onPromoteOpen();
   };
 
-  const confirmPromoteToStory = () => {
+  const confirmPromoteToStory = async () => {
     if (selectedPost) {
       try {
-        // 세션 스토리지에 새로운 Story 생성
+        // Supabase에 새로운 Story 생성
         const storyData = {
           title: promoteForm.title,
           content: promoteForm.content,
-          summary: selectedPost.summary || promoteForm.content.substring(0, 150) + '...',
-          author: selectedPost.author,
+          summary: selectedPost.content ? selectedPost.content.substring(0, 150) + '...' : promoteForm.content.substring(0, 150) + '...',
+          author_id: selectedPost.author_id,
+          author_name: selectedPost.author_name,
           tags: ['라운지승격', selectedPost.type || 'general'],
-          readTime: Math.ceil(promoteForm.content.length / 500) || 5, // 대략적인 읽기 시간
-          imageUrl: `https://picsum.photos/800/600?random=${Date.now()}`,
-          isFromLounge: true,
-          originalAuthor: selectedPost.author,
-          isVerified: true,
-          likeCount: 0,
-          scrapCount: 0,
-          viewCount: 0,
-          commentCount: 0,
-          isPublished: true,
+          read_time: Math.ceil(promoteForm.content.length / 500) || 5,
+          image_url: `https://picsum.photos/800/600?random=${Date.now()}`,
+          is_verified: true,
+          is_published: true
         };
         
-        const createdStory = sessionStoryService.create(storyData);
+        const createdStory = await storyService.create(storyData);
         
         if (createdStory) {
           toast({
@@ -174,6 +175,7 @@ const AdminLounge: React.FC = () => {
           throw new Error('Story 생성 실패');
         }
       } catch (error) {
+        console.error('Story 승격 실패:', error);
         toast({
           title: "승격 실패",
           description: "Story 승격 처리 중 오류가 발생했습니다",
@@ -253,7 +255,7 @@ const AdminLounge: React.FC = () => {
           >
             <Text fontSize="sm" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>승격 후보 (우수글)</Text>
             <Text fontSize="2xl" fontWeight="bold" color="orange.500">
-              {adminLoungePosts.filter(post => post.isExcellent).length}
+              {adminLoungePosts.filter(post => post.is_excellent).length}
             </Text>
           </Card>
           
@@ -301,11 +303,11 @@ const AdminLounge: React.FC = () => {
                           noOfLines={1} 
                           maxW="300px"
                           color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}
-                          fontWeight={post.isExcellent ? "600" : "normal"}
+                          fontWeight={post.is_excellent ? "600" : "normal"}
                         >
                           {post.title}
                         </Text>
-                        {post.isExcellent && (
+                        {post.is_excellent && (
                           <HStack>
                             <Badge colorScheme="yellow" size="sm">
                               <StarIcon mr={1} boxSize={2} />
@@ -319,23 +321,23 @@ const AdminLounge: React.FC = () => {
                       </VStack>
                     </Td>
                     <Td color={colorMode === 'dark' ? '#c3c3c6' : '#4d4d59'}>
-                      {post.author}
+                      {post.author_name}
                     </Td>
                     <Td>{getTypeBadge(post.type)}</Td>
                     <Td>
-                      <Text color={post.likeCount > 50 ? "orange.500" : (colorMode === 'dark' ? '#9e9ea4' : '#626269')}>
-                        {post.likeCount}
+                      <Text color={post.like_count > 50 ? "orange.500" : (colorMode === 'dark' ? '#9e9ea4' : '#626269')}>
+                        {post.like_count}
                       </Text>
                     </Td>
                     <Td color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
-                      {post.commentCount}
+                      {post.comment_count}
                     </Td>
                     <Td color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
-                      {dayjs(post.createdAt).format('YYYY.MM.DD')}
+                      {dayjs(post.created_at).format('YYYY.MM.DD')}
                     </Td>
                     <Td>
                       <HStack spacing={2}>
-                        {post.isExcellent && !(post as any).isPromotedToStory && (
+                        {post.is_excellent && !(post as any).isPromotedToStory && (
                           <Tooltip label="Story로 승격">
                             <IconButton
                               aria-label="Promote to Story"

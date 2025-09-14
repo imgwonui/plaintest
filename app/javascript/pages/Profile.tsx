@@ -36,7 +36,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { ExternalLinkIcon, SettingsIcon, StarIcon, AttachmentIcon } from '@chakra-ui/icons';
-import { sessionStoryService, sessionLoungeService, sessionScrapService, sessionLikeService, initializeData } from '../services/sessionDataService';
+import { storyService, loungeService, interactionService, userService } from '../services/supabaseDataService';
 import { formatDate } from '../utils/format';
 import LevelBadge from '../components/UserLevel/LevelBadge';
 import UserLevelIcon from '../components/UserLevel/UserLevelIcon';
@@ -55,6 +55,7 @@ const Profile: React.FC = () => {
   const [userLoungePosts, setUserLoungePosts] = useState<any[]>([]);
   const [userBookmarks, setUserBookmarks] = useState<any[]>([]);
   const [userLikes, setUserLikes] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   // 로그인하지 않은 사용자는 로그인 페이지로 리다이렉트
   useEffect(() => {
@@ -67,76 +68,285 @@ const Profile: React.FC = () => {
   useEffect(() => {
     if (!user) return;
     
-    initializeData();
-    const allStories = sessionStoryService.getAll();
-    const allLoungePosts = sessionLoungeService.getAll();
-    const allBookmarks = sessionScrapService.getAll();
-    const allLikes = sessionLikeService.getAll();
-    
-    // 사용자의 글들 - 관리자가 아닌 일반 사용자는 Story를 직접 작성할 수 없고, 라운지 글이 Story로 승격되는 경우만 있음
-    const myStories = allStories.filter(story => 
-      story.isFromLounge && story.originalAuthor === user.name
-    );
-    const myLoungePosts = allLoungePosts.filter(post => post.author === user.name);
-    
-    // 사용자의 북마크들
-    const myBookmarks = allBookmarks
-      .filter(bookmark => bookmark.userId === user.id)
-      .map(bookmark => {
-        if (bookmark.postType === 'story') {
-          const story = allStories.find(s => s.id === bookmark.postId);
-          return story ? { ...story, type: 'story', bookmarkedAt: bookmark.createdAt } : null;
-        } else {
-          const post = allLoungePosts.find(p => p.id === bookmark.postId);
-          return post ? { ...post, type: 'lounge', bookmarkedAt: bookmark.createdAt } : null;
+    const loadUserData = async () => {
+      try {
+        setIsLoading(true);
+        // 사용자의 글들 로드
+        console.log('🔍 사용자 ID로 글 조회 시작:', user.id);
+        const [storiesResponse, loungeResponse] = await Promise.all([
+          storyService.getByAuthor(user.id),
+          loungeService.getByAuthor(user.id)
+        ]);
+        
+        const myStories = storiesResponse.stories || [];
+        const myLoungePosts = loungeResponse.posts || [];
+        
+        console.log('📊 조회된 사용자 글들:', {
+          stories: myStories.length,
+          loungePosts: myLoungePosts.length,
+          storiesData: myStories.slice(0, 2), // 처음 2개만 로그
+          loungeData: myLoungePosts.slice(0, 2)
+        });
+        
+        // 사용자의 북마크들 로드
+        const bookmarksResponse = await interactionService.getUserBookmarks(user.id);
+        const rawBookmarks = bookmarksResponse || [];
+        
+        // 북마크된 실제 게시글들 가져오기
+        const bookmarkDetails = await Promise.all(
+          rawBookmarks.map(async (bookmark) => {
+            try {
+              if (bookmark.post_type === 'story') {
+                const story = await storyService.getById(bookmark.post_id);
+                return story ? {
+                  ...story,
+                  type: 'story',
+                  author: story.author_name,
+                  bookmarkedAt: bookmark.created_at
+                } : null;
+              } else {
+                const post = await loungeService.getById(bookmark.post_id);
+                return post ? {
+                  ...post,
+                  type: 'lounge',
+                  author: post.author_name,
+                  bookmarkedAt: bookmark.created_at
+                } : null;
+              }
+            } catch (error) {
+              console.error('북마크 세부정보 로드 실패:', bookmark, error);
+              return null;
+            }
+          })
+        );
+        
+        const myBookmarks = bookmarkDetails.filter(item => item !== null)
+          .sort((a, b) => new Date(b.bookmarkedAt).getTime() - new Date(a.bookmarkedAt).getTime());
+        
+        // 사용자가 좋아요한 글들 로드
+        const likesResponse = await interactionService.getUserLikes(user.id);
+        const rawLikes = likesResponse?.likes || [];
+        
+        // 좋아요한 실제 게시글들 가져오기
+        const likeDetails = await Promise.all(
+          rawLikes.map(async (like) => {
+            try {
+              if (like.post_type === 'story') {
+                const story = await storyService.getById(like.post_id);
+                return story ? {
+                  ...story,
+                  type: 'story',
+                  author: story.author_name,
+                  likedAt: like.created_at
+                } : null;
+              } else {
+                const post = await loungeService.getById(like.post_id);
+                return post ? {
+                  ...post,
+                  type: 'lounge',
+                  author: post.author_name,
+                  likedAt: like.created_at
+                } : null;
+              }
+            } catch (error) {
+              console.error('좋아요 세부정보 로드 실패:', like, error);
+              return null;
+            }
+          })
+        );
+        
+        const myLikes = likeDetails.filter(item => item !== null)
+          .sort((a, b) => new Date(b.likedAt).getTime() - new Date(a.likedAt).getTime());
+        
+        // 통계 계산 - 실제 likes 테이블에서 직접 계산
+        console.log('🔄 실제 좋아요 수 계산 중...');
+        let storyLikes = 0;
+        let loungeLikes = 0;
+        
+        // Story 글들의 실제 좋아요 수 계산
+        for (const story of myStories) {
+          try {
+            const actualCount = await interactionService.getLikeCount(story.id, 'story');
+            storyLikes += actualCount;
+          } catch (error) {
+            console.warn(`Story ${story.id} 좋아요 수 조회 실패:`, error);
+          }
         }
-      })
-      .filter(item => item !== null)
-      .sort((a, b) => new Date(b.bookmarkedAt).getTime() - new Date(a.bookmarkedAt).getTime());
-    
-    // 사용자가 좋아요한 글들
-    const myLikes = allLikes
-      .filter(like => like.userId === user.id)
-      .map(like => {
-        if (like.postType === 'story') {
-          const story = allStories.find(s => s.id === like.postId);
-          return story ? { ...story, type: 'story', likedAt: like.createdAt } : null;
-        } else {
-          const post = allLoungePosts.find(p => p.id === like.postId);
-          return post ? { ...post, type: 'lounge', likedAt: like.createdAt } : null;
+        
+        // Lounge 글들의 실제 좋아요 수 계산
+        for (const post of myLoungePosts) {
+          try {
+            const actualCount = await interactionService.getLikeCount(post.id, 'lounge');
+            loungeLikes += actualCount;
+          } catch (error) {
+            console.warn(`Lounge ${post.id} 좋아요 수 조회 실패:`, error);
+          }
         }
-      })
-      .filter(item => item !== null)
-      .sort((a, b) => new Date(b.likedAt).getTime() - new Date(a.likedAt).getTime());
-    
-    // 통계 계산
-    const totalLikes = allLikes.filter(like => {
-      if (like.postType === 'story') {
-        const story = allStories.find(s => s.id === like.postId);
-        return story && story.author === user.name;
-      } else {
-        const post = allLoungePosts.find(p => p.id === like.postId);
-        return post && post.author === user.name;
+        
+        const totalLikes = storyLikes + loungeLikes;
+        
+        // 각 라운지 글의 실시간 좋아요/댓글 수 업데이트
+        console.log('🔄 라운지 글 통계 업데이트 중...');
+        const updatedLoungePosts = await Promise.all(
+          myLoungePosts.map(async (post) => {
+            try {
+              console.log(`📊 글 ${post.id} 통계 업데이트 중...`);
+              
+              // 좋아요 수와 댓글 수 조회
+              const [actualLikeCount, actualCommentCount] = await Promise.all([
+                interactionService.getLikeCount(post.id, 'lounge'),
+                interactionService.getCommentCount(post.id, 'lounge')
+              ]);
+              console.log(`  → 좋아요: ${actualLikeCount}개`);
+              console.log(`  → 댓글: ${actualCommentCount}개`);
+              
+              return {
+                ...post,
+                like_count: actualLikeCount,
+                comment_count: actualCommentCount
+              };
+            } catch (error) {
+              console.warn(`라운지 글 ${post.id} 통계 업데이트 실패:`, error);
+              return {
+                ...post,
+                like_count: 0,
+                comment_count: post.comment_count || 0
+              };
+            }
+          })
+        );
+        
+        console.log('💖 좋아요 수 계산:', {
+          storyLikes,
+          loungeLikes,
+          totalLikes,
+          storyLikeCounts: myStories.map(s => ({ id: s.id, title: s.title?.substring(0, 20), likes: s.like_count })),
+          loungeLikeCounts: updatedLoungePosts.map(p => ({ id: p.id, title: p.title?.substring(0, 20), likes: p.like_count }))
+        });
+        
+        // 사용자 활동 점수 계산 및 레벨 업데이트
+        const activityScore = (totalLikes * 2) + (myStories.length * 50) + (myLoungePosts.length * 3);
+        console.log(`📈 활동 점수 계산: 좋아요 ${totalLikes}×2 + Story ${myStories.length}×50 + Lounge ${myLoungePosts.length}×3 = ${activityScore}점`);
+        
+        // 레벨 업데이트 시도 (사용자 ID를 숫자로 변환)
+        try {
+          const numericUserId = parseInt(user.id) || stringToHash(user.id);
+          console.log(`🔄 사용자 ${user.name} (ID: ${user.id} → ${numericUserId}) 레벨 업데이트 시도...`);
+          console.log(`📊 계산된 활동 점수: ${activityScore}점`);
+          
+          // 현재 레벨 정보
+          const currentLevel = getUserDisplayLevel(numericUserId);
+          console.log(`📈 현재 레벨: LV${currentLevel.level}, 경험치: ${currentLevel.totalExp}`);
+          
+          // 직접 경험치 설정 (관리자 모드)
+          userLevelService.setUserExp(numericUserId, activityScore);
+          
+          // 업데이트 후 레벨 정보
+          const updatedLevel = getUserDisplayLevel(numericUserId);
+          console.log(`🎉 업데이트 후 레벨: LV${updatedLevel.level}, 경험치: ${updatedLevel.totalExp}`);
+          
+          if (updatedLevel.level > currentLevel.level) {
+            console.log(`🎊 레벨업! LV${currentLevel.level} → LV${updatedLevel.level}`);
+          }
+          
+          // 🔥 세션 레벨을 데이터베이스에 동기화
+          try {
+            const syncResult = await userService.syncSessionLevelToDatabase(
+              user.id, 
+              updatedLevel.level, 
+              updatedLevel.totalExp,
+              {
+                totalLikes,
+                totalPosts: myStories.length + myLoungePosts.length,
+                totalComments: 0 // 댓글은 별도로 계산 필요시 추가
+              }
+            );
+            
+            if (syncResult) {
+              console.log(`✅ 세션 레벨이 데이터베이스에 동기화됨: ${user.name} LV${updatedLevel.level}`);
+            } else {
+              console.warn(`⚠️ 데이터베이스 동기화 실패: ${user.name}`);
+            }
+          } catch (syncError) {
+            console.error('데이터베이스 동기화 중 오류:', syncError);
+          }
+          
+          console.log('✅ 레벨 업데이트 완료');
+        } catch (levelError) {
+          console.warn('⚠️ 레벨 업데이트 실패:', levelError);
+        }
+        
+        const stats = {
+          storiesCount: myStories.length,
+          loungePostsCount: updatedLoungePosts.length,
+          totalLikes,
+          bookmarksCount: myBookmarks.length,
+          joinedDays: Math.ceil((new Date().getTime() - new Date(user.created_at || Date.now()).getTime()) / (1000 * 60 * 60 * 24)),
+          activityScore
+        };
+        
+        setUserStats(stats);
+        setUserStories(myStories);
+        setUserLoungePosts(updatedLoungePosts); // 업데이트된 라운지 글들 사용
+        setUserBookmarks(myBookmarks);
+        setUserLikes(myLikes);
+      } catch (error) {
+        console.error('사용자 데이터 로드 실패:', error);
+        toast({
+          title: "데이터를 불러오는 중 오류가 발생했습니다",
+          status: "error",
+          duration: 5000,
+        });
+        
+        // 에러 시 기본값 설정
+        setUserStats({
+          storiesCount: 0,
+          loungePostsCount: 0,
+          totalLikes: 0,
+          bookmarksCount: 0,
+          joinedDays: 1,
+        });
+        setUserStories([]);
+        setUserLoungePosts([]);
+        setUserBookmarks([]);
+        setUserLikes([]);
+      } finally {
+        setIsLoading(false);
       }
-    }).length;
-    
-    const stats = {
-      storiesCount: myStories.length,
-      loungePostsCount: myLoungePosts.length,
-      totalLikes,
-      bookmarksCount: myBookmarks.length,
-      joinedDays: Math.ceil((new Date().getTime() - new Date(user.createdAt || Date.now()).getTime()) / (1000 * 60 * 60 * 24)),
     };
     
-    setUserStats(stats);
-    setUserStories(myStories);
-    setUserLoungePosts(myLoungePosts);
-    setUserBookmarks(myBookmarks);
-    setUserLikes(myLikes);
-  }, [user]);
+    loadUserData();
+  }, [user, toast]);
 
   const handleHRVerification = () => {
     window.open('https://salaryday.co.kr', '_blank');
+  };
+
+  // 영어 타입을 한국어로 변환하는 함수
+  const getTypeInKorean = (type: string) => {
+    switch (type) {
+      case 'question': return '질문/Q&A';
+      case 'experience': return '경험담/사연 공유';
+      case 'info': return '정보·팁 공유';
+      case 'free': return '자유글/잡담';
+      case 'news': return '뉴스에 한마디';
+      case 'advice': return '같이 고민해요';
+      case 'recommend': return '추천해주세요';
+      case 'anonymous': return '익명 토크';
+      default: return type;
+    }
+  };
+
+  // 문자열을 숫자 해시로 변환하는 함수
+  const stringToHash = (str: string): number => {
+    let hash = 0;
+    if (str.length === 0) return hash;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // 32bit 정수로 변환
+    }
+    return Math.abs(hash);
   };
 
   const getProviderBadge = (provider: string) => {
@@ -150,8 +360,24 @@ const Profile: React.FC = () => {
     }
   };
 
-  if (!isLoggedIn || !user || !userStats) {
+  if (!isLoggedIn || !user) {
     return null;
+  }
+
+  if (isLoading || !userStats) {
+    return (
+      <Container maxW="1200px" py={8}>
+        <VStack spacing={8} align="stretch">
+          <Box h="200px" bg={colorMode === 'dark' ? '#3c3c47' : '#f7f7f7'} borderRadius="xl" />
+          <Box h="150px" bg={colorMode === 'dark' ? '#3c3c47' : '#f7f7f7'} borderRadius="xl" />
+          <SimpleGrid columns={{ base: 2, md: 4 }} spacing={6}>
+            {[...Array(4)].map((_, index) => (
+              <Box key={index} h="100px" bg={colorMode === 'dark' ? '#3c3c47' : '#f7f7f7'} borderRadius="lg" />
+            ))}
+          </SimpleGrid>
+        </VStack>
+      </Container>
+    );
   }
 
   return (
@@ -173,7 +399,7 @@ const Profile: React.FC = () => {
                       {user.name}
                     </Heading>
                     <LevelBadge 
-                      level={getUserDisplayLevel(user.id).level} 
+                      level={getUserDisplayLevel(parseInt(user.id) || stringToHash(user.id)).level} 
                       size="md" 
                       variant="solid"
                       showIcon={true}
@@ -193,7 +419,7 @@ const Profile: React.FC = () => {
                   </Text>
                   
                   <Text fontSize="sm" color={colorMode === 'dark' ? '#7e7e87' : '#9e9ea4'}>
-                    {formatDate(user.createdAt || new Date().toISOString())}에 가입 • {userStats.joinedDays}일째
+                    {formatDate(user.created_at || new Date().toISOString())}에 가입 • {userStats.joinedDays}일째
                   </Text>
                 </VStack>
                 
@@ -240,7 +466,7 @@ const Profile: React.FC = () => {
                   활동 레벨
                 </Heading>
                 <LevelBadge 
-                  level={getUserDisplayLevel(user.id).level} 
+                  level={getUserDisplayLevel(parseInt(user.id) || stringToHash(user.id)).level} 
                   size="lg" 
                   variant="solid"
                   showIcon={true}
@@ -249,7 +475,9 @@ const Profile: React.FC = () => {
               </HStack>
               
               {(() => {
-                const userLevel = getUserDisplayLevel(user.id);
+                // 사용자 ID를 숫자로 변환해서 레벨 정보 가져오기
+                const numericUserId = parseInt(user.id) || stringToHash(user.id);
+                const userLevel = getUserDisplayLevel(numericUserId);
                 const currentTier = LevelUtils.getLevelTier(userLevel.level);
                 const nextLevel = userLevel.level < 99 ? userLevel.level + 1 : userLevel.level;
                 const nextLevelExp = userLevel.level < 99 ? LevelUtils.getRequiredExpForLevel(nextLevel) : userLevel.totalExp;
@@ -439,11 +667,11 @@ const Profile: React.FC = () => {
                               </Text>
                             </Td>
                             <Td color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
-                              {dayjs(story.createdAt).format('YYYY.MM.DD')}
+                              {dayjs(story.created_at).format('YYYY.MM.DD')}
                             </Td>
-                            <Td color="red.500">{story.likeCount || 0}</Td>
+                            <Td color="red.500">{story.like_count || 0}</Td>
                             <Td color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
-                              {story.viewCount || 0}
+                              {story.view_count || 0}
                             </Td>
                           </Tr>
                         ))}
@@ -493,14 +721,14 @@ const Profile: React.FC = () => {
                               </Text>
                             </Td>
                             <Td>
-                              <Badge colorScheme="blue" size="sm">{post.type}</Badge>
+                              <Badge colorScheme="blue" size="sm">{getTypeInKorean(post.type)}</Badge>
                             </Td>
                             <Td color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
-                              {dayjs(post.createdAt).format('YYYY.MM.DD')}
+                              {dayjs(post.created_at).format('YYYY.MM.DD')}
                             </Td>
-                            <Td color="red.500">{post.likeCount || 0}</Td>
+                            <Td color="red.500">{post.like_count || 0}</Td>
                             <Td color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
-                              {post.commentCount || 0}
+                              {post.comment_count || 0}
                             </Td>
                           </Tr>
                         ))}

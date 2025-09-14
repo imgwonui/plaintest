@@ -38,7 +38,7 @@ import {
 } from '@chakra-ui/react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { sessionStoryService, sessionLoungeService, sessionUserService, sessionCommentService, initializeData, getDataStats } from '../services/sessionDataService';
+import { storyService, loungeService, userService, commentService } from '../services/supabaseDataService';
 
 const AdminDashboard: React.FC = () => {
   const { colorMode } = useColorMode();
@@ -50,58 +50,159 @@ const AdminDashboard: React.FC = () => {
   const [stats, setStats] = useState<any>(null);
   const [recentActivities, setRecentActivities] = useState<any[]>([]);
 
-  // 세션 데이터 로드 및 통계 계산
+  // Supabase 실제 데이터 로드 및 통계 계산
   useEffect(() => {
-    initializeData();
-    const loadedStories = sessionStoryService.getAll();
-    const loadedPosts = sessionLoungeService.getAll();
-    const allUsers = sessionUserService.getAllUsers();
-    const allComments = sessionCommentService.getAll();
-    const dataStats = getDataStats();
+    if (!isAdmin) {
+      console.log('❌ 관리자가 아님, 데이터 로드 중단');
+      return;
+    }
     
-    setStories(loadedStories);
-    setLoungePosts(loadedPosts);
-    
-    // 실제 데이터 기반 통계 계산
-    const now = new Date();
-    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const thisWeekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    
-    const thisMonthStories = loadedStories.filter(story => 
-      new Date(story.createdAt) >= thisMonthStart
-    ).length;
-    
-    const thisMonthPosts = loadedPosts.filter(post => 
-      new Date(post.createdAt) >= thisMonthStart
-    ).length;
-    
-    // 댓글과 글 작성자들을 기반으로 사용자 수 추정
-    const storyAuthors = [...new Set(loadedStories.map(story => story.author))];
-    const postAuthors = [...new Set(loadedPosts.map(post => post.author))];
-    const commentAuthors = [...new Set(allComments.map(comment => comment.author))];
-    const allAuthors = [...new Set([...storyAuthors, ...postAuthors, ...commentAuthors])];
-    
-    // 이번 주에 활동한 사용자 추정 (최근 댓글/글 작성자)
-    const recentActivity = [
-      ...loadedPosts.filter(post => new Date(post.createdAt) >= thisWeekStart),
-      ...allComments.filter(comment => new Date(comment.createdAt) >= thisWeekStart)
-    ];
-    const recentActiveAuthors = [...new Set(recentActivity.map(item => item.author))];
-    
-    const calculatedStats = {
-      totalUsers: Math.max(allAuthors.length, 10), // 최소 10명으로 설정
-      monthlyActiveUsers: Math.max(Math.floor(allAuthors.length * 0.6), 6), // 60% 추정 활성 사용자
-      totalStories: loadedStories.length,
-      totalLoungePosts: loadedPosts.length,
-      totalComments: allComments.length,
-      thisMonthStories,
-      thisMonthPosts,
-      recentSignups: recentActiveAuthors.length,
-      pendingStories: 0, // 실제 데이터에는 모든 스토리가 발행됨
+    const loadAdminData = async () => {
+      try {
+        console.log('🔄 AdminDashboard 데이터 로딩 시작...', { isAdmin, user });
+        
+        // 모든 데이터를 병렬로 로드
+        const [storiesResult, loungeResult, usersResult, commentsResult] = await Promise.all([
+          storyService.getAll(1, 1000), // 모든 스토리
+          loungeService.getAll(1, 1000), // 모든 라운지 글
+          userService.getAllUsers(1, 1000), // 모든 사용자
+          commentService.getAll(1, 1000) // 모든 댓글
+        ]);
+        
+        console.log('📊 Raw data received:', {
+          storiesResult,
+          loungeResult, 
+          usersResult,
+          commentsResult
+        });
+        
+        const loadedStories = storiesResult.stories || [];
+        const loadedPosts = loungeResult.posts || [];
+        const allUsers = usersResult.users || [];
+        const allComments = commentsResult.comments || [];
+        
+        console.log('📋 Parsed data:', {
+          loadedStoriesCount: loadedStories.length,
+          loadedPostsCount: loadedPosts.length,
+          allUsersCount: allUsers.length,
+          allCommentsCount: allComments.length
+        });
+        
+        setStories(loadedStories);
+        setLoungePosts(loadedPosts);
+        
+        // 실제 데이터 기반 통계 계산
+        const now = new Date();
+        const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        const thisWeekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        
+        const thisMonthStories = loadedStories.filter(story => 
+          new Date(story.created_at) >= thisMonthStart
+        ).length;
+        
+        const thisMonthPosts = loadedPosts.filter(post => 
+          new Date(post.created_at) >= thisMonthStart
+        ).length;
+        
+        // 이번 주 활동한 사용자 (스토리, 라운지, 댓글 작성자)
+        const recentStoryAuthors = loadedStories
+          .filter(story => new Date(story.created_at) >= thisWeekStart)
+          .map(story => story.author_id);
+        
+        const recentPostAuthors = loadedPosts
+          .filter(post => new Date(post.created_at) >= thisWeekStart)
+          .map(post => post.author_id);
+        
+        const recentCommentAuthors = allComments
+          .filter(comment => new Date(comment.created_at) >= thisWeekStart)
+          .map(comment => comment.author_id);
+        
+        const recentActiveUsers = [...new Set([...recentStoryAuthors, ...recentPostAuthors, ...recentCommentAuthors])];
+        
+        // 월간 활성 사용자 (이번 달에 활동한 사용자)
+        const monthlyStoryAuthors = loadedStories
+          .filter(story => new Date(story.created_at) >= thisMonthStart)
+          .map(story => story.author_id);
+        
+        const monthlyPostAuthors = loadedPosts
+          .filter(post => new Date(post.created_at) >= thisMonthStart)
+          .map(post => post.author_id);
+        
+        const monthlyCommentAuthors = allComments
+          .filter(comment => new Date(comment.created_at) >= thisMonthStart)
+          .map(comment => comment.author_id);
+        
+        const monthlyActiveUsers = [...new Set([...monthlyStoryAuthors, ...monthlyPostAuthors, ...monthlyCommentAuthors])];
+        
+        // 유저이탈율 계산 (월간 비활성 사용자 / 전체 사용자 * 100) - 항상 양수
+        const monthlyInactiveUsers = Math.max(0, allUsers.length - monthlyActiveUsers.length);
+        const userChurnRate = allUsers.length > 0 ? Math.round((monthlyInactiveUsers / allUsers.length) * 100) : 0;
+        
+        // 월간 신규 유입자 수 (이번 달에 가입한 사용자 수)
+        const monthlyNewUsers = allUsers.filter(user => 
+          new Date(user.created_at) >= thisMonthStart
+        ).length;
+        
+        // Carrying Capacity = 월간 신규 유입자 수 ÷ (이탈율 ÷ 100)
+        // 예시: 신규 5000명, 이탈율 10% → 5000 ÷ (10 ÷ 100) = 5000 ÷ 0.1 = 50000
+        const carryingCapacity = userChurnRate > 0 ? 
+          Math.round(monthlyNewUsers / (userChurnRate / 100)) : 
+          monthlyNewUsers > 0 ? '∞' : 0;
+        
+        const calculatedStats = {
+          totalUsers: allUsers.length,
+          monthlyActiveUsers: monthlyActiveUsers.length,
+          totalStories: loadedStories.length,
+          totalLoungePosts: loadedPosts.length,
+          totalComments: allComments.length,
+          thisMonthStories,
+          thisMonthPosts,
+          recentSignups: recentActiveUsers.length,
+          userChurnRate,
+          monthlyNewUsers,
+          carryingCapacity,
+        };
+        
+        setStats(calculatedStats);
+        
+        console.log('✅ 관리자 대시보드 데이터 로드 성공:', {
+          총사용자: allUsers.length,
+          월간활성사용자: monthlyActiveUsers.length,
+          총스토리: loadedStories.length,
+          총라운지글: loadedPosts.length,
+          총댓글: allComments.length,
+          calculatedStats
+        });
+        
+        console.log('🎯 Stats 설정 전 상태:', stats);
+        console.log('🎯 새로 설정할 calculatedStats:', calculatedStats);
+        
+      } catch (error) {
+        console.error('❌ 관리자 대시보드 데이터 로드 실패:', error);
+        // 에러 시에도 빈 통계로 설정
+        setStats({
+          totalUsers: 0,
+          monthlyActiveUsers: 0,
+          totalStories: 0,
+          totalLoungePosts: 0,
+          totalComments: 0,
+          thisMonthStories: 0,
+          thisMonthPosts: 0,
+          recentSignups: 0,
+          userChurnRate: 0,
+          monthlyNewUsers: 0,
+          carryingCapacity: 0,
+        });
+      }
     };
     
-    setStats(calculatedStats);
-  }, []);
+    loadAdminData();
+  }, [isAdmin]);
+
+  // Stats 상태 변화 모니터링
+  useEffect(() => {
+    console.log('📊 Stats 상태 변경됨:', stats);
+  }, [stats]);
 
   // 최근 활동 데이터 계산 (stats와 stories/loungePosts가 모두 로드된 후)
   useEffect(() => {
@@ -125,7 +226,7 @@ const AdminDashboard: React.FC = () => {
     
     // 최근 스토리들
     const recentStories = stories
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       .slice(0, 3);
     
     recentStories.forEach(story => {
@@ -134,14 +235,14 @@ const AdminDashboard: React.FC = () => {
         type: 'story',
         action: 'published',
         title: story.title,
-        user: story.author,
-        time: getTimeAgo(story.createdAt)
+        user: story.author_name,
+        time: getTimeAgo(story.created_at)
       });
     });
     
     // 최근 라운지 글들
     const recentPosts = loungePosts
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       .slice(0, 2);
     
     recentPosts.forEach(post => {
@@ -150,18 +251,18 @@ const AdminDashboard: React.FC = () => {
         type: 'lounge',
         action: 'posted',
         title: post.title,
-        user: post.author,
-        time: getTimeAgo(post.createdAt)
+        user: post.author_name,
+        time: getTimeAgo(post.created_at)
       });
     });
     
     // 시간순 정렬
     return activities
       .sort((a, b) => {
-        const timeA = new Date(stories.find(s => s.id === parseInt(a.id.split('-')[1]))?.createdAt || 
-                               loungePosts.find(p => p.id === parseInt(a.id.split('-')[1]))?.createdAt || 0);
-        const timeB = new Date(stories.find(s => s.id === parseInt(b.id.split('-')[1]))?.createdAt || 
-                               loungePosts.find(p => p.id === parseInt(b.id.split('-')[1]))?.createdAt || 0);
+        const timeA = new Date(stories.find(s => s.id === parseInt(a.id.split('-')[1]))?.created_at || 
+                               loungePosts.find(p => p.id === parseInt(a.id.split('-')[1]))?.created_at || 0);
+        const timeB = new Date(stories.find(s => s.id === parseInt(b.id.split('-')[1]))?.created_at || 
+                               loungePosts.find(p => p.id === parseInt(b.id.split('-')[1]))?.created_at || 0);
         return timeB.getTime() - timeA.getTime();
       })
       .slice(0, 5);
@@ -180,8 +281,22 @@ const AdminDashboard: React.FC = () => {
     return `${diffDays}일 전`;
   };
 
-  if (!isAdmin || !stats) {
+  if (!isAdmin) {
     return null;
+  }
+
+  // 로딩 상태 표시
+  if (!stats) {
+    return (
+      <Container maxW="1200px" py={8}>
+        <VStack spacing={8} align="stretch">
+          <Heading as="h1" size="xl" color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}>
+            관리자 대시보드
+          </Heading>
+          <Text>데이터 로딩 중...</Text>
+        </VStack>
+      </Container>
+    );
   }
 
   return (
@@ -207,7 +322,7 @@ const AdminDashboard: React.FC = () => {
           <Heading as="h2" size="lg" mb={6} color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}>
             🎯 핵심 지표
           </Heading>
-          <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={6}>
+          <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} spacing={6}>
             <Stat 
               p={6} 
               bg={colorMode === 'dark' ? '#3c3c47' : 'white'} 
@@ -240,10 +355,23 @@ const AdminDashboard: React.FC = () => {
               borderRadius="lg"
               border={colorMode === 'dark' ? '1px solid #4d4d59' : '1px solid #e4e4e5'}
             >
-              <StatLabel color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>승인 대기 Story</StatLabel>
-              <StatNumber color="orange.500">{stats.pendingStories}</StatNumber>
+              <StatLabel color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>유저이탈율</StatLabel>
+              <StatNumber color="red.500">{stats.userChurnRate}%</StatNumber>
               <StatHelpText color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
-                확인 필요
+                월간 기준
+              </StatHelpText>
+            </Stat>
+
+            <Stat 
+              p={6} 
+              bg={colorMode === 'dark' ? '#3c3c47' : 'white'} 
+              borderRadius="lg"
+              border={colorMode === 'dark' ? '1px solid #4d4d59' : '1px solid #e4e4e5'}
+            >
+              <StatLabel color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>Carrying Capacity</StatLabel>
+              <StatNumber color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}>{stats.carryingCapacity}</StatNumber>
+              <StatHelpText color="blue.500">
+                성장 지속성
               </StatHelpText>
             </Stat>
           </SimpleGrid>

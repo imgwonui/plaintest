@@ -25,7 +25,7 @@ import { SearchIcon } from '@chakra-ui/icons';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import Card from '../components/Card';
 import EmptyState from '../components/EmptyState';
-import { sessionStoryService, sessionLoungeService, sessionUserService, sessionSearchService, initializeData } from '../services/sessionDataService';
+import { storyService, loungeService, userService, searchService } from '../services/supabaseDataService';
 
 const SearchResults: React.FC = () => {
   const { colorMode } = useColorMode();
@@ -34,68 +34,65 @@ const SearchResults: React.FC = () => {
   const query = searchParams.get('q') || '';
   const [searchInput, setSearchInput] = useState(query);
   const [tabIndex, setTabIndex] = useState(0);
-  const [stories, setStories] = useState<any[]>([]);
-  const [loungePosts, setLoungePosts] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<any>({ stories: [], loungePosts: [], total: 0 });
   const [hotKeywords, setHotKeywords] = useState<any[]>([]);
   const [recentKeywords, setRecentKeywords] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // 세션 데이터 로드
-  useEffect(() => {
-    initializeData();
-    setStories(sessionStoryService.getAll());
-    setLoungePosts(sessionLoungeService.getAll());
-    
-    // 검색 관련 데이터 로드
-    refreshSearchData();
-  }, [refreshSearchData]);
+  // 검색 실행 함수
+  const performSearch = async (searchQuery: string) => {
+    if (!searchQuery.trim()) {
+      setSearchResults({ stories: [], loungePosts: [], total: 0 });
+      return;
+    }
 
-  // 검색 결과 계산
-  const searchResults = useMemo(() => {
-    if (!query.trim()) return { stories: [], loungePosts: [] };
+    try {
+      setIsLoading(true);
+      console.log('🔍 Supabase 검색 실행:', searchQuery);
+      
+      const results = await searchService.search(searchQuery.trim());
+      console.log('✅ 검색 결과:', results);
+      
+      setSearchResults({
+        stories: results.stories || [],
+        loungePosts: results.loungePosts || [],
+        total: results.totalResults || 0
+      });
+      
+    } catch (error) {
+      console.error('❌ 검색 실패:', error);
+      setSearchResults({ stories: [], loungePosts: [], total: 0 });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-    const searchTerm = query.toLowerCase().trim();
-    
-    const filteredStories = stories.filter(story => 
-      (story.title && story.title.toLowerCase().includes(searchTerm)) ||
-      (story.summary && story.summary.toLowerCase().includes(searchTerm)) ||
-      (story.tags && story.tags.some(tag => tag && tag.toLowerCase().includes(searchTerm)))
-    );
-
-    const filteredLoungePosts = loungePosts.filter(post =>
-      (post.title && post.title.toLowerCase().includes(searchTerm)) ||
-      (post.summary && post.summary.toLowerCase().includes(searchTerm)) ||
-      (post.tags && post.tags.some(tag => tag && tag.toLowerCase().includes(searchTerm)))
-    );
-
-    return {
-      stories: filteredStories,
-      loungePosts: filteredLoungePosts
-    };
-  }, [query, stories, loungePosts]);
-
-  const totalResults = searchResults.stories.length + searchResults.loungePosts.length;
-
-  // 검색 데이터 새로고침 함수
-  const refreshSearchData = React.useCallback(() => {
-    const topKeywords = sessionSearchService.getTopKeywords(5);
-    setHotKeywords(topKeywords.map((item, index) => ({
-      term: item.keyword,
-      rank: index + 1,
-      count: item.count
-    })));
-    
-    const recent = sessionSearchService.getRecentKeywords(8);
-    setRecentKeywords(recent.map(item => item.keyword));
-  }, []);
+  // 검색 데이터 새로고침 함수  
+  const refreshSearchData = async () => {
+    try {
+      const [topKeywords, recentKeywords] = await Promise.all([
+        searchService.getTopKeywords(5),
+        searchService.getRecentKeywords(8)
+      ]);
+      
+      setHotKeywords(topKeywords.map((item, index) => ({
+        term: item.keyword,
+        rank: index + 1,
+        count: item.search_count
+      })));
+      
+      setRecentKeywords(recentKeywords.map(item => item.keyword));
+      
+    } catch (error) {
+      console.error('❌ 검색 데이터 로드 실패:', error);
+      setHotKeywords([]);
+      setRecentKeywords([]);
+    }
+  };
   
   const handleSearch = (newQuery: string) => {
     if (newQuery.trim()) {
-      // 세션 스토리지에 검색어 추가
-      sessionSearchService.addSearchKeyword(newQuery.trim());
       setSearchParams({ q: newQuery.trim() });
-      
-      // 검색 데이터 새로고침
-      refreshSearchData();
     }
   };
 
@@ -105,15 +102,21 @@ const SearchResults: React.FC = () => {
     }
   };
 
+  // 초기 로드시 검색 데이터 로드
+  useEffect(() => {
+    refreshSearchData();
+  }, []);
+
+  // URL 파라미터 변경시 검색 실행 (중복 방지를 위해 한 번만)
   useEffect(() => {
     setSearchInput(query);
-    // URL에 검색어가 있으면 세션에 추가
     if (query.trim()) {
-      sessionSearchService.addSearchKeyword(query.trim());
-      // 검색 후 데이터 새로고침
-      refreshSearchData();
+      console.log('🔄 URL 파라미터 변경으로 검색 실행:', query);
+      performSearch(query);
+    } else {
+      setSearchResults({ stories: [], loungePosts: [], total: 0 });
     }
-  }, [query, refreshSearchData]);
+  }, [query]);
 
   return (
     <Container maxW="1200px" py={{ base: 6, md: 8 }}>
@@ -162,7 +165,7 @@ const SearchResults: React.FC = () => {
                 "{query}"에 대한 검색 결과
               </Text>
               <Badge colorScheme="brand" variant="subtle">
-                총 {totalResults}개
+                총 {searchResults.total}개
               </Badge>
             </HStack>
           )}
@@ -175,7 +178,7 @@ const SearchResults: React.FC = () => {
           <Tabs index={tabIndex} onChange={setTabIndex} colorScheme="brand">
             <TabList>
               <Tab>
-                전체 ({totalResults})
+                전체 ({searchResults.total})
               </Tab>
               <Tab>
                 Story ({searchResults.stories.length})
@@ -189,7 +192,11 @@ const SearchResults: React.FC = () => {
               {/* 전체 탭 */}
               <TabPanel px={0}>
                 <VStack spacing={8} align="stretch">
-                  {totalResults === 0 ? (
+                  {isLoading ? (
+                    <Box textAlign="center" py={8}>
+                      <Text>검색 중...</Text>
+                    </Box>
+                  ) : searchResults.total === 0 ? (
                     <EmptyState
                       title="검색 결과가 없어요"
                       description="다른 키워드로 검색해보시거나 철자를 확인해주세요."
@@ -221,12 +228,13 @@ const SearchResults: React.FC = () => {
                                 id={story.id}
                                 title={story.title}
                                 summary={story.summary}
-                                imageUrl={story.imageUrl}
+                                imageUrl={story.image_url}
                                 tags={story.tags}
-                                createdAt={story.createdAt}
-                                readTime={story.readTime}
-                                author={story.author}
-                                authorId={story.author ? sessionUserService.getUserIdByName(story.author) : undefined}
+                                createdAt={story.created_at}
+                                readTime={story.read_time}
+                                author={story.author_name}
+                                authorId={story.author_id}
+                                authorVerified={story.author_verified}
                               />
                             ))}
                           </SimpleGrid>
@@ -257,17 +265,17 @@ const SearchResults: React.FC = () => {
                                 type="lounge"
                                 id={post.id}
                                 title={post.title}
-                                summary={post.summary}
+                                summary={post.content}
                                 tags={post.tags}
-                                createdAt={post.createdAt}
+                                createdAt={post.created_at}
                                 loungeType={post.type}
-                                isExcellent={post.isExcellent}
-                                likeCount={post.likeCount}
-                                commentCount={post.commentCount}
-                                author={post.author}
-                                authorId={post.author ? sessionUserService.getUserIdByName(post.author) : undefined}
-                                promotionStatus={post.promotionStatus}
-                                promotionNote={post.promotionNote}
+                                isExcellent={post.is_excellent}
+                                likeCount={post.like_count}
+                                commentCount={post.comment_count}
+                                scrapCount={post.scrap_count}
+                                author={post.author_name}
+                                authorId={post.author_id}
+                                authorVerified={post.author_verified}
                               />
                             ))}
                           </SimpleGrid>
@@ -280,7 +288,11 @@ const SearchResults: React.FC = () => {
 
               {/* Story 탭 */}
               <TabPanel px={0}>
-                {searchResults.stories.length === 0 ? (
+                {isLoading ? (
+                  <Box textAlign="center" py={8}>
+                    <Text>검색 중...</Text>
+                  </Box>
+                ) : searchResults.stories.length === 0 ? (
                   <EmptyState
                     title="Story 검색 결과가 없어요"
                     description="다른 키워드로 검색해보세요."
@@ -294,12 +306,13 @@ const SearchResults: React.FC = () => {
                         id={story.id}
                         title={story.title}
                         summary={story.summary}
-                        imageUrl={story.imageUrl}
+                        imageUrl={story.image_url}
                         tags={story.tags}
-                        createdAt={story.createdAt}
-                        readTime={story.readTime}
-                        author={story.author}
-                        authorId={story.author ? sessionUserService.getUserIdByName(story.author) : undefined}
+                        createdAt={story.created_at}
+                        readTime={story.read_time}
+                        author={story.author_name}
+                        authorId={story.author_id}
+                        authorVerified={story.author_verified}
                       />
                     ))}
                   </SimpleGrid>
@@ -308,7 +321,11 @@ const SearchResults: React.FC = () => {
 
               {/* Lounge 탭 */}
               <TabPanel px={0}>
-                {searchResults.loungePosts.length === 0 ? (
+                {isLoading ? (
+                  <Box textAlign="center" py={8}>
+                    <Text>검색 중...</Text>
+                  </Box>
+                ) : searchResults.loungePosts.length === 0 ? (
                   <EmptyState
                     title="Lounge 검색 결과가 없어요"
                     description="다른 키워드로 검색해보세요."
@@ -321,17 +338,17 @@ const SearchResults: React.FC = () => {
                         type="lounge"
                         id={post.id}
                         title={post.title}
-                        summary={post.summary}
+                        summary={post.content}
                         tags={post.tags}
-                        createdAt={post.createdAt}
+                        createdAt={post.created_at}
                         loungeType={post.type}
-                        isExcellent={post.isExcellent}
-                        likeCount={post.likeCount}
-                        commentCount={post.commentCount}
-                        author={post.author}
-                        authorId={post.author ? sessionUserService.getUserIdByName(post.author) : undefined}
-                        promotionStatus={post.promotionStatus}
-                        promotionNote={post.promotionNote}
+                        isExcellent={post.is_excellent}
+                        likeCount={post.like_count}
+                        commentCount={post.comment_count}
+                        scrapCount={post.scrap_count}
+                        author={post.author_name}
+                        authorId={post.author_id}
+                        authorVerified={post.author_verified}
                       />
                     ))}
                   </SimpleGrid>

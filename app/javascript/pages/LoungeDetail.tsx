@@ -23,9 +23,11 @@ import AdminHint from '../components/AdminHint';
 import SEOHead from '../components/SEOHead';
 import { QAPageJsonLd, BreadcrumbJsonLd } from '../components/JsonLd';
 import { useAuth } from '../contexts/AuthContext';
-import { sessionLoungeService, sessionCommentService, sessionScrapService, sessionLikeService, initializeData } from '../services/sessionDataService';
+import { loungeService, commentService, interactionService } from '../services/supabaseDataService';
 import { formatDate } from '../utils/format';
 import { getTagById } from '../data/tags';
+import LevelBadge from '../components/UserLevel/LevelBadge';
+import { getUserDisplayLevel } from '../services/userLevelService';
 
 const LoungeDetail: React.FC = () => {
   const { colorMode } = useColorMode();
@@ -43,36 +45,102 @@ const LoungeDetail: React.FC = () => {
   const [scrapCount, setScrapCount] = useState(0);
   const [likeCount, setLikeCount] = useState(0);
 
-  // 세션 데이터 로드
+  // Supabase 데이터 로드
   useEffect(() => {
-    initializeData();
-    const foundPost = sessionLoungeService.getById(postId);
-    if (foundPost) {
-      setPost(foundPost);
-      setLikeCount(foundPost.likeCount || 0);
-      setScrapCount(foundPost.scrapCount || 0);
-      
-      // 로그인된 사용자의 좋아요/북마크 상태 확인
-      if (isLoggedIn && user) {
-        // 좋아요 상태 확인
-        const isUserLiked = sessionLikeService.isLiked(user.id, postId, 'lounge');
-        setIsLiked(isUserLiked);
-        
-        // 북마크 상태 확인
-        const isScraped = sessionScrapService.isScraped(user.id, postId, 'lounge');
-        setIsBookmarked(isScraped);
-      } else {
-        setIsLiked(false);
-        setIsBookmarked(false);
+    const loadPost = async () => {
+      try {
+        const foundPost = await loungeService.getById(postId);
+        if (foundPost) {
+          setPost(foundPost);
+          setLikeCount(foundPost.like_count || 0);
+          setScrapCount(foundPost.scrap_count || 0);
+          
+          // 로그인된 사용자의 좋아요/북마크 상태 확인
+          if (isLoggedIn && user) {
+            console.log('🔍 사용자 좋아요/북마크 상태 확인 중:', { userId: user.id, postId });
+            
+            // 좋아요 상태 확인
+            const isUserLiked = await interactionService.isLiked(user.id, postId, 'lounge');
+            console.log('✅ 좋아요 상태 로드됨:', isUserLiked);
+            setIsLiked(isUserLiked);
+            
+            // 실제 좋아요 개수 확인 및 동기화
+            console.log('🔍 실제 좋아요 개수 확인 중...');
+            const actualLikeCount = await interactionService.getLikeCount(postId, 'lounge');
+            console.log('✅ 실제 좋아요 개수:', actualLikeCount);
+            setLikeCount(actualLikeCount);
+            
+            // 데이터베이스의 like_count 필드도 동기화
+            try {
+              await interactionService.syncLikeCount(postId, 'lounge');
+              console.log('✅ 데이터베이스 like_count 필드 동기화 완료');
+            } catch (error) {
+              console.error('❌ like_count 필드 동기화 실패:', error);
+            }
+            
+            // 북마크 상태 확인
+            const isScraped = await interactionService.isBookmarked(user.id, postId, 'lounge');
+            console.log('✅ 북마크 상태 로드됨:', isScraped);
+            setIsBookmarked(isScraped);
+            
+            // 실제 북마크 개수 확인 및 동기화
+            console.log('🔍 실제 북마크 개수 확인 중...');
+            const actualScrapCount = await interactionService.getScrapCount(postId, 'lounge');
+            console.log('✅ 실제 북마크 개수:', actualScrapCount);
+            setScrapCount(actualScrapCount);
+            
+            // 데이터베이스의 scrap_count 필드도 동기화
+            try {
+              await interactionService.syncScrapCount(postId, 'lounge');
+              console.log('✅ 데이터베이스 scrap_count 필드 동기화 완료');
+            } catch (error) {
+              console.error('❌ scrap_count 필드 동기화 실패:', error);
+            }
+          } else {
+            console.log('❌ 로그인되지 않음, 좋아요/북마크 상태 초기화');
+            setIsLiked(false);
+            setIsBookmarked(false);
+          }
+          
+          // 댓글 로드 (계층구조)
+          const comments = await commentService.getByPost(postId, 'lounge');
+          
+          // 댓글 데이터를 컴포넌트 형식으로 변환
+          const transformedComments = comments?.map((comment: any) => ({
+            ...comment,
+            author: comment.author_name,
+            createdAt: comment.created_at,
+            isGuest: comment.is_guest,
+            guestPassword: comment.guest_password,
+            authorVerified: comment.author_verified,
+            parentId: comment.parent_id,
+            replies: comment.replies?.map((reply: any) => ({
+              ...reply,
+              author: reply.author_name,
+              createdAt: reply.created_at,
+              isGuest: reply.is_guest,
+              guestPassword: reply.guest_password,
+              authorVerified: reply.author_verified,
+              parentId: reply.parent_id
+            })) || []
+          })) || [];
+          
+          setPostComments(transformedComments);
+        }
+      } catch (error) {
+        console.error('라운지 포스트 로드 실패:', error);
+        toast({
+          title: "글을 불러오는 중 오류가 발생했습니다",
+          status: "error",
+          duration: 5000,
+        });
       }
-      
-      // 댓글 로드 (계층구조)
-      const comments = sessionCommentService.getByPostHierarchical(postId, 'lounge');
-      setPostComments(comments);
-    }
-  }, [postId, isLoggedIn, user]);
+    };
+    
+    loadPost();
+  }, [postId, isLoggedIn, user, toast]);
 
-  const handleLike = () => {
+  const handleLike = async () => {
     if (!isLoggedIn || !user) {
       toast({
         title: "로그인이 필요해요",
@@ -83,34 +151,42 @@ const LoungeDetail: React.FC = () => {
       return;
     }
 
-    if (isLiked) {
-      // 좋아요 해제
-      const success = sessionLikeService.remove(user.id, postId, 'lounge');
-      if (success) {
+    try {
+      console.log('🔄 좋아요 버튼 클릭됨, 현재 상태:', { isLiked, likeCount });
+      
+      const result = await interactionService.toggleLike(user.id, postId, 'lounge');
+      console.log('🔄 좋아요 토글 결과:', result);
+      
+      if (result.action === 'added') {
+        console.log('➕ 좋아요 추가됨, UI 상태 업데이트');
+        setIsLiked(true);
+        setLikeCount(likeCount + 1); // 전체 개수에 1 추가
+        toast({
+          title: "좋아요를 눌렀습니다",
+          status: "success",
+          duration: 2000,
+        });
+      } else {
+        console.log('❌ 좋아요 제거됨, UI 상태 업데이트');
         setIsLiked(false);
-        setLikeCount(likeCount - 1);
+        setLikeCount(likeCount - 1); // 전체 개수에서 1 제거
         toast({
           title: "좋아요를 취소했습니다",
           status: "success",
           duration: 2000,
         });
       }
-    } else {
-      // 좋아요 추가
-      const success = sessionLikeService.add(user.id, postId, 'lounge');
-      if (success) {
-        setIsLiked(true);
-        setLikeCount(likeCount + 1);
-        toast({
-          title: "좋아요를 눌렀습니다",
-          status: "success",
-          duration: 2000,
-        });
-      }
+    } catch (error) {
+      console.error('좋아요 처리 실패:', error);
+      toast({
+        title: "좋아요 처리 중 오류가 발생했습니다",
+        status: "error",
+        duration: 3000,
+      });
     }
   };
 
-  const handleBookmark = () => {
+  const handleBookmark = async () => {
     if (!isLoggedIn || !user) {
       toast({
         title: "로그인이 필요해요",
@@ -121,10 +197,23 @@ const LoungeDetail: React.FC = () => {
       return;
     }
 
-    if (isBookmarked) {
-      // 북마크 해제
-      const success = sessionScrapService.remove(user.id, postId, 'lounge');
-      if (success) {
+    try {
+      console.log('🔄 북마크 버튼 클릭됨, 현재 상태:', { isBookmarked, scrapCount });
+      
+      const result = await interactionService.toggleScrap(user.id, postId, 'lounge');
+      console.log('🔄 북마크 토글 결과:', result);
+      
+      if (result.action === 'added') {
+        console.log('➕ 북마크 추가됨, UI 상태 업데이트');
+        setIsBookmarked(true);
+        setScrapCount(scrapCount + 1);
+        toast({
+          title: "북마크에 추가했습니다",
+          status: "success",
+          duration: 2000,
+        });
+      } else {
+        console.log('❌ 북마크 제거됨, UI 상태 업데이트');
         setIsBookmarked(false);
         setScrapCount(scrapCount - 1);
         toast({
@@ -133,25 +222,20 @@ const LoungeDetail: React.FC = () => {
           duration: 2000,
         });
       }
-    } else {
-      // 북마크 추가
-      const success = sessionScrapService.add(user.id, postId, 'lounge');
-      if (success) {
-        setIsBookmarked(true);
-        setScrapCount(scrapCount + 1);
-        toast({
-          title: "북마크에 추가했습니다",
-          status: "success",
-          duration: 2000,
-        });
-      }
+    } catch (error) {
+      console.error('북마크 처리 실패:', error);
+      toast({
+        title: "북마크 처리 중 오류가 발생했습니다",
+        status: "error",
+        duration: 3000,
+      });
     }
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (window.confirm('정말로 이 글을 삭제하시겠습니까?\n삭제된 글은 복구할 수 없습니다.')) {
       try {
-        const success = sessionLoungeService.delete(postId);
+        const success = await loungeService.delete(postId);
         if (success) {
           toast({
             title: '글이 삭제되었습니다',
@@ -177,18 +261,40 @@ const LoungeDetail: React.FC = () => {
     setIsSubmittingComment(true);
     
     try {
-      // 실제 댓글 생성 - 세션 데이터에 저장
-      const newComment = sessionCommentService.create({
-        postId,
-        postType: 'lounge' as const,
-        author: user ? user.name : (author || "익명"),
+      // 실제 댓글 생성 - Supabase에 저장
+      const newComment = await commentService.create({
+        post_id: postId,
+        post_type: 'lounge' as const,
         content,
-        isGuest: !user,
-        guestPassword: password, // 실제로는 해시화해서 저장
-        authorVerified: user?.isVerified || false
+        author_name: user ? user.name : (author || "익명"),
+        is_guest: !user,
+        guest_password: password // 실제로는 해시화해서 저장
       });
       
-      setPostComments([...postComments, newComment]);
+      // 댓글 목록 새로고침
+      const updatedComments = await commentService.getByPost(postId, 'lounge');
+      
+      // 댓글 데이터를 컴포넌트 형식으로 변환
+      const transformedComments = updatedComments?.map((comment: any) => ({
+        ...comment,
+        author: comment.author_name,
+        createdAt: comment.created_at,
+        isGuest: comment.is_guest,
+        guestPassword: comment.guest_password,
+        authorVerified: comment.author_verified,
+        parentId: comment.parent_id,
+        replies: comment.replies?.map((reply: any) => ({
+          ...reply,
+          author: reply.author_name,
+          createdAt: reply.created_at,
+          isGuest: reply.is_guest,
+          guestPassword: reply.guest_password,
+          authorVerified: reply.author_verified,
+          parentId: reply.parent_id
+        })) || []
+      })) || [];
+      
+      setPostComments(transformedComments);
       
       toast({
         title: "댓글이 등록되었습니다",
@@ -212,21 +318,41 @@ const LoungeDetail: React.FC = () => {
     setIsSubmittingComment(true);
     
     try {
-      // 대댓글 생성 - 세션 데이터에 저장
-      const newReply = sessionCommentService.create({
-        postId,
-        postType: 'lounge' as const,
-        author: user ? user.name : (author || "익명"),
+      // 대댓글 생성 - Supabase에 저장
+      const newReply = await commentService.create({
+        post_id: postId,
+        post_type: 'lounge' as const,
         content,
-        isGuest: !user,
-        guestPassword: password,
-        authorVerified: user?.isVerified || false,
-        parentId: parentId // 부모 댓글 ID
+        author_name: user ? user.name : (author || "익명"),
+        is_guest: !user,
+        guest_password: password,
+        parent_id: parentId // 부모 댓글 ID
       });
       
-      // 댓글 목록 새로고침 (계층구조)
-      const updatedComments = sessionCommentService.getByPostHierarchical(postId, 'lounge');
-      setPostComments(updatedComments);
+      // 댓글 목록 새로고침
+      const updatedComments = await commentService.getByPost(postId, 'lounge');
+      
+      // 댓글 데이터를 컴포넌트 형식으로 변환
+      const transformedComments = updatedComments?.map((comment: any) => ({
+        ...comment,
+        author: comment.author_name,
+        createdAt: comment.created_at,
+        isGuest: comment.is_guest,
+        guestPassword: comment.guest_password,
+        authorVerified: comment.author_verified,
+        parentId: comment.parent_id,
+        replies: comment.replies?.map((reply: any) => ({
+          ...reply,
+          author: reply.author_name,
+          createdAt: reply.created_at,
+          isGuest: reply.is_guest,
+          guestPassword: reply.guest_password,
+          authorVerified: reply.author_verified,
+          parentId: reply.parent_id
+        })) || []
+      })) || [];
+      
+      setPostComments(transformedComments);
       
       toast({
         title: "답글이 등록되었습니다",
@@ -248,11 +374,32 @@ const LoungeDetail: React.FC = () => {
 
   const handleCommentEdit = async (commentId: number, newContent: string, password?: string) => {
     try {
-      const updatedComment = sessionCommentService.update(commentId, newContent, password);
+      const updatedComment = await commentService.update(commentId, newContent, password);
       
-      // 댓글 목록 새로고침 (계층구조)
-      const updatedComments = sessionCommentService.getByPostHierarchical(postId, 'lounge');
-      setPostComments(updatedComments);
+      // 댓글 목록 새로고침
+      const updatedComments = await commentService.getByPost(postId, 'lounge');
+      
+      // 댓글 데이터를 컴포넌트 형식으로 변환
+      const transformedComments = updatedComments?.map((comment: any) => ({
+        ...comment,
+        author: comment.author_name,
+        createdAt: comment.created_at,
+        isGuest: comment.is_guest,
+        guestPassword: comment.guest_password,
+        authorVerified: comment.author_verified,
+        parentId: comment.parent_id,
+        replies: comment.replies?.map((reply: any) => ({
+          ...reply,
+          author: reply.author_name,
+          createdAt: reply.created_at,
+          isGuest: reply.is_guest,
+          guestPassword: reply.guest_password,
+          authorVerified: reply.author_verified,
+          parentId: reply.parent_id
+        })) || []
+      })) || [];
+      
+      setPostComments(transformedComments);
       
       toast({
         title: "댓글이 수정되었습니다",
@@ -272,11 +419,32 @@ const LoungeDetail: React.FC = () => {
 
   const handleCommentDelete = async (commentId: number, password?: string) => {
     try {
-      sessionCommentService.delete(commentId, password);
+      await commentService.delete(commentId, password);
       
-      // 댓글 목록 새로고침 (계층구조)
-      const updatedComments = sessionCommentService.getByPostHierarchical(postId, 'lounge');
-      setPostComments(updatedComments);
+      // 댓글 목록 새로고침
+      const updatedComments = await commentService.getByPost(postId, 'lounge');
+      
+      // 댓글 데이터를 컴포넌트 형식으로 변환
+      const transformedComments = updatedComments?.map((comment: any) => ({
+        ...comment,
+        author: comment.author_name,
+        createdAt: comment.created_at,
+        isGuest: comment.is_guest,
+        guestPassword: comment.guest_password,
+        authorVerified: comment.author_verified,
+        parentId: comment.parent_id,
+        replies: comment.replies?.map((reply: any) => ({
+          ...reply,
+          author: reply.author_name,
+          createdAt: reply.created_at,
+          isGuest: reply.is_guest,
+          guestPassword: reply.guest_password,
+          authorVerified: reply.author_verified,
+          parentId: reply.parent_id
+        })) || []
+      })) || [];
+      
+      setPostComments(transformedComments);
       
       toast({
         title: "댓글이 삭제되었습니다",
@@ -296,18 +464,28 @@ const LoungeDetail: React.FC = () => {
 
   const getBadgeVariant = (type?: string) => {
     switch (type) {
-      case 'question': return 'question';
-      case 'experience': return 'experience';
-      case 'help': return 'help';
-      default: return 'story';
+      case 'question': return 'blue';
+      case 'experience': return 'green';
+      case 'info': return 'purple';
+      case 'free': return 'gray';
+      case 'news': return 'orange';
+      case 'advice': return 'teal';
+      case 'recommend': return 'pink';
+      case 'anonymous': return 'red';
+      default: return 'gray';
     }
   };
 
   const getBadgeText = (type?: string) => {
     switch (type) {
-      case 'question': return '물어보고 싶어요';
-      case 'experience': return '이런 일이 있었어요';
-      case 'help': return '도움이 될 글이에요';
+      case 'question': return '질문/Q&A';
+      case 'experience': return '경험담/사연 공유';
+      case 'info': return '정보·팁 공유';
+      case 'free': return '자유글/잡담';
+      case 'news': return '뉴스에 한마디';
+      case 'advice': return '같이 고민해요';
+      case 'recommend': return '추천해주세요';
+      case 'anonymous': return '익명 토크';
       default: return '';
     }
   };
@@ -333,7 +511,7 @@ const LoungeDetail: React.FC = () => {
         keywords={`HR, 인사, 커뮤니티, ${post.tags?.join(', ')}, ${post.type === 'question' ? '질문, Q&A' : post.type === 'experience' ? '경험담, 사례' : '팁, 노하우'}`}
         url={`/lounge/${post.id}`}
         type="article"
-        author={post.author}
+        author={post.author_name}
         publishedTime={post.createdAt}
         tags={post.tags}
       />
@@ -342,7 +520,7 @@ const LoungeDetail: React.FC = () => {
           title={post.title}
           question={post.title}
           answer={post.content?.substring(0, 500).replace(/[#*`]/g, '') + '...'}
-          author={post.author}
+          author={post.author_name}
           datePublished={post.createdAt}
           url={`/lounge/${post.id}`}
           tags={post.tags}
@@ -360,7 +538,7 @@ const LoungeDetail: React.FC = () => {
         {/* 글 헤더 */}
         <VStack spacing={6} align="stretch">
           <HStack spacing={3} align="center">
-            <Badge variant={getBadgeVariant(post.type)} size="md">
+            <Badge colorScheme={getBadgeVariant(post.type)} size="md">
               {getBadgeText(post.type)}
             </Badge>
             
@@ -384,7 +562,7 @@ const LoungeDetail: React.FC = () => {
             </Heading>
             
             {/* 작성자/관리자 수정/삭제 버튼 */}
-            {user && (isAdmin || post.author === user.name) && (
+            {user && (isAdmin || post.author_name === user.name) && (
               <HStack spacing={3} flexShrink={0} ml={6}>
                 <Button
                   leftIcon={<EditIcon />}
@@ -411,13 +589,27 @@ const LoungeDetail: React.FC = () => {
             <VStack align="flex-start" spacing={2}>
               <HStack spacing={4} fontSize="sm" color={colorMode === 'dark' ? 'gray.300' : 'gray.600'}>
                 <HStack spacing={2}>
-                  <Text fontWeight="500">{post.author}</Text>
-                  {post.authorVerified && (
+                  <Text fontWeight="500">{post.author_name}</Text>
+                  {post.author_id && (
+                    <LevelBadge 
+                      level={getUserDisplayLevel(post.author_id).level} 
+                      size="xs" 
+                      variant="subtle"
+                      showIcon={true}
+                    />
+                  )}
+                  {post.author_verified && (
                     <Badge colorScheme="green" size="sm">인사담당자</Badge>
                   )}
                 </HStack>
                 <Text>·</Text>
-                <Text>{formatDate(post.createdAt)}</Text>
+                <Text>{new Date(post.created_at).toLocaleString('ko-KR', {
+                  year: 'numeric',
+                  month: '2-digit', 
+                  day: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}</Text>
               </HStack>
               
               <HStack spacing={2} flexWrap="wrap">

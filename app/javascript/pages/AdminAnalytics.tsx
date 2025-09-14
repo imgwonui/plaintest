@@ -32,13 +32,11 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { 
-  sessionStoryService, 
-  sessionLoungeService, 
-  sessionUserService, 
-  sessionCommentService,
-  sessionScrapService,
-  initializeData 
-} from '../services/sessionDataService';
+  storyService, 
+  loungeService, 
+  userService, 
+  commentService
+} from '../services/supabaseDataService';
 import { getAllTags, getTagById } from '../data/tags';
 import dayjs from 'dayjs';
 
@@ -60,91 +58,132 @@ const AdminAnalytics: React.FC = () => {
     loadAnalytics();
   }, [isAdmin, navigate, period]);
 
-  const loadAnalytics = () => {
-    initializeData();
-    
-    const stories = sessionStoryService.getAll();
-    const loungePosts = sessionLoungeService.getAll();
-    const comments = sessionCommentService.getAll();
-    const scraps = sessionScrapService.getAll();
-    
-    // 기간별 데이터 필터링
-    const daysAgo = parseInt(period);
-    const periodStart = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
-    
-    const periodStories = stories.filter(story => new Date(story.createdAt) >= periodStart);
-    const periodPosts = loungePosts.filter(post => new Date(post.createdAt) >= periodStart);
-    const periodComments = comments.filter(comment => new Date(comment.createdAt) >= periodStart);
-    
-    // 태그 분석
-    const tagUsage = {};
-    [...stories, ...loungePosts].forEach(item => {
-      item.tags.forEach((tagId: string) => {
-        const tag = getTagById(tagId);
-        if (tag) {
-          tagUsage[tag.name] = (tagUsage[tag.name] || 0) + 1;
+  const loadAnalytics = async () => {
+    try {
+      console.log('🔄 AdminAnalytics 데이터 로딩 시작...');
+      
+      // Supabase에서 모든 데이터를 병렬로 로드
+      const [storiesResult, loungeResult, commentsResult] = await Promise.all([
+        storyService.getAll(1, 1000),
+        loungeService.getAll(1, 1000),
+        commentService.getAll(1, 1000)
+      ]);
+      
+      const stories = storiesResult.stories || [];
+      const loungePosts = loungeResult.posts || [];
+      const comments = commentsResult.comments || [];
+      
+      console.log('📊 AdminAnalytics Raw data:', {
+        스토리수: stories.length,
+        라운지글수: loungePosts.length,
+        댓글수: comments.length
+      });
+      
+      // 기간별 데이터 필터링
+      const daysAgo = parseInt(period);
+      const periodStart = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
+      
+      const periodStories = stories.filter(story => new Date(story.created_at) >= periodStart);
+      const periodPosts = loungePosts.filter(post => new Date(post.created_at) >= periodStart);
+      const periodComments = comments.filter(comment => new Date(comment.created_at) >= periodStart);
+      
+      // 태그 분석
+      const tagUsage = {};
+      [...stories, ...loungePosts].forEach(item => {
+        if (item.tags && Array.isArray(item.tags)) {
+          item.tags.forEach((tagId: string) => {
+            const tag = getTagById(tagId);
+            if (tag) {
+              tagUsage[tag.name] = (tagUsage[tag.name] || 0) + 1;
+            }
+          });
         }
       });
-    });
-    
-    const topTags = Object.entries(tagUsage)
-      .sort(([, a], [, b]) => (b as number) - (a as number))
-      .slice(0, 10)
-      .map(([name, count]) => ({ name, count }));
-    
-    // 인기 콘텐츠
-    const topStories = stories
-      .sort((a, b) => (b.viewCount || 0) + (b.scrapCount || 0) * 2 - ((a.viewCount || 0) + (a.scrapCount || 0) * 2))
-      .slice(0, 5);
-    
-    const topLoungePosts = loungePosts
-      .sort((a, b) => (b.likeCount || 0) + (b.commentCount || 0) - ((a.likeCount || 0) + (a.commentCount || 0)))
-      .slice(0, 5);
-    
-    // 활성 사용자 (최근 활동 기준)
-    const recentAuthors = [
-      ...periodStories.map(s => s.author),
-      ...periodPosts.map(p => p.author),
-      ...periodComments.map(c => c.author)
-    ];
-    const uniqueActiveUsers = [...new Set(recentAuthors)];
-    
-    // 콘텐츠 유형별 통계
-    const loungeTypeStats = {};
-    loungePosts.forEach(post => {
-      const type = post.type || 'free';
-      loungeTypeStats[type] = (loungeTypeStats[type] || 0) + 1;
-    });
-    
-    setAnalytics({
-      period: daysAgo,
-      totalStories: stories.length,
-      totalLoungePosts: loungePosts.length,
-      totalComments: comments.length,
-      totalScraps: scraps.length,
-      periodStories: periodStories.length,
-      periodPosts: periodPosts.length,
-      periodComments: periodComments.length,
-      activeUsers: uniqueActiveUsers.length,
-      topTags,
-      topStories,
-      topLoungePosts,
-      loungeTypeStats,
-      avgCommentsPerStory: stories.length > 0 ? (comments.filter(c => c.postType === 'story').length / stories.length).toFixed(1) : '0',
-      avgCommentsPerLounge: loungePosts.length > 0 ? (comments.filter(c => c.postType === 'lounge').length / loungePosts.length).toFixed(1) : '0'
-    });
+      
+      const topTags = Object.entries(tagUsage)
+        .sort(([, a], [, b]) => (b as number) - (a as number))
+        .slice(0, 10)
+        .map(([name, count]) => ({ name, count }));
+      
+      // 인기 콘텐츠
+      const topStories = stories
+        .sort((a, b) => (b.view_count || 0) + (b.scrap_count || 0) * 2 - ((a.view_count || 0) + (a.scrap_count || 0) * 2))
+        .slice(0, 5);
+      
+      const topLoungePosts = loungePosts
+        .sort((a, b) => (b.like_count || 0) + (b.comment_count || 0) - ((a.like_count || 0) + (a.comment_count || 0)))
+        .slice(0, 5);
+      
+      // 활성 사용자 (최근 활동 기준)
+      const recentAuthors = [
+        ...periodStories.map(s => s.author_name),
+        ...periodPosts.map(p => p.author_name),
+        ...periodComments.map(c => c.author_name)
+      ];
+      const uniqueActiveUsers = [...new Set(recentAuthors.filter(Boolean))];
+      
+      // 콘텐츠 유형별 통계
+      const loungeTypeStats = {};
+      loungePosts.forEach(post => {
+        const type = post.type || 'free';
+        loungeTypeStats[type] = (loungeTypeStats[type] || 0) + 1;
+      });
+      
+      // 스크랩 수 계산 (스토리에서 scrap_count 합산)
+      const totalScraps = stories.reduce((sum, story) => sum + (story.scrap_count || 0), 0);
+      
+      setAnalytics({
+        period: daysAgo,
+        totalStories: stories.length,
+        totalLoungePosts: loungePosts.length,
+        totalComments: comments.length,
+        totalScraps: totalScraps,
+        periodStories: periodStories.length,
+        periodPosts: periodPosts.length,
+        periodComments: periodComments.length,
+        activeUsers: uniqueActiveUsers.length,
+        topTags,
+        topStories,
+        topLoungePosts,
+        loungeTypeStats,
+        avgCommentsPerStory: stories.length > 0 ? (comments.filter(c => c.post_type === 'story').length / stories.length).toFixed(1) : '0',
+        avgCommentsPerLounge: loungePosts.length > 0 ? (comments.filter(c => c.post_type === 'lounge').length / loungePosts.length).toFixed(1) : '0'
+      });
+      
+      console.log('✅ AdminAnalytics 데이터 로드 성공');
+      
+    } catch (error) {
+      console.error('❌ AdminAnalytics 데이터 로드 실패:', error);
+      setAnalytics({
+        period: parseInt(period),
+        totalStories: 0,
+        totalLoungePosts: 0,
+        totalComments: 0,
+        totalScraps: 0,
+        periodStories: 0,
+        periodPosts: 0,
+        periodComments: 0,
+        activeUsers: 0,
+        topTags: [],
+        topStories: [],
+        topLoungePosts: [],
+        loungeTypeStats: {},
+        avgCommentsPerStory: '0',
+        avgCommentsPerLounge: '0'
+      });
+    }
   };
 
   const getLoungeTypeName = (type: string) => {
     const typeMap = {
       'question': '질문/Q&A',
-      'experience': '경험담/사연',
-      'info': '정보/팁',
+      'experience': '경험담/사연 공유',
+      'info': '정보·팁 공유',
       'free': '자유글/잡담',
-      'news': '뉴스',
-      'advice': '고민상담',
-      'recommend': '추천',
-      'anonymous': '익명'
+      'news': '뉴스에 한마디',
+      'advice': '같이 고민해요',
+      'recommend': '추천해주세요',
+      'anonymous': '익명 토크'
     };
     return typeMap[type] || type;
   };
@@ -372,18 +411,18 @@ const AdminAnalytics: React.FC = () => {
                               </Text>
                             </HStack>
                             <Text fontSize="xs" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
-                              {dayjs(story.createdAt).format('MM/DD')}
+                              {dayjs(story.created_at).format('MM/DD')}
                             </Text>
                           </VStack>
                         </Td>
                         <Td textAlign="center">
                           <Text fontSize="sm" color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}>
-                            {story.viewCount || 0}
+                            {story.view_count || 0}
                           </Text>
                         </Td>
                         <Td textAlign="center">
                           <Text fontSize="sm" color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}>
-                            {story.scrapCount || 0}
+                            {story.scrap_count || 0}
                           </Text>
                         </Td>
                       </Tr>
@@ -433,18 +472,18 @@ const AdminAnalytics: React.FC = () => {
                               </Text>
                             </HStack>
                             <Text fontSize="xs" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
-                              {dayjs(post.createdAt).format('MM/DD')}
+                              {dayjs(post.created_at).format('MM/DD')}
                             </Text>
                           </VStack>
                         </Td>
                         <Td textAlign="center">
                           <Text fontSize="sm" color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}>
-                            {post.likeCount || 0}
+                            {post.like_count || 0}
                           </Text>
                         </Td>
                         <Td textAlign="center">
                           <Text fontSize="sm" color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}>
-                            {post.commentCount || 0}
+                            {post.comment_count || 0}
                           </Text>
                         </Td>
                       </Tr>

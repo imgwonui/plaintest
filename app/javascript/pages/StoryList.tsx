@@ -23,7 +23,7 @@ import CustomSelect from '../components/CustomSelect';
 import EmptyState from '../components/EmptyState';
 import { CardSkeletonGrid } from '../components/LoadingSpinner';
 import SEOHead from '../components/SEOHead';
-import { sessionStoryService, sessionUserService, initializeData } from '../services/sessionDataService';
+import { storyService, userService } from '../services/supabaseDataService';
 import { useAuth } from '../contexts/AuthContext';
 import { getAllTags, getTagById } from '../data/tags';
 import TagSelector from '../components/TagSelector';
@@ -38,25 +38,40 @@ const StoryList: React.FC = () => {
   const toast = useToast();
   const [sortBy, setSortBy] = useState<SortOption>('latest');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [stories, setStories] = useState<any[]>([]);
 
   // 데이터 로드 함수
-  const loadStories = () => {
-    initializeData();
-    const allStories = sessionStoryService.getAll();
-    console.log('스토리 데이터 로드:', allStories.length, '개');
-    setStories([...allStories]); // 새로운 배열 객체 생성
+  const loadStories = async () => {
+    try {
+      console.log('📖 스토리 목록 로드 시작...');
+      setIsLoading(true);
+      const response = await storyService.getAll(1, 100); // 페이지네이션 나중에 추가
+      console.log('📖 스토리 서비스 응답:', response);
+      setStories(response.stories || []);
+      console.log('✅ 스토리 데이터 로드 성공:', response.stories?.length || 0, '개');
+      console.log('📖 로드된 스토리들:', response.stories);
+    } catch (error) {
+      console.error('❌ 스토리 데이터 로드 실패:', error);
+      toast({
+        title: "데이터 로드 실패",
+        description: "스토리를 불러오는 중 오류가 발생했습니다.",
+        status: "error",
+        duration: 5000,
+      });
+      setStories([]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  // 세션 데이터 로드
+  // 데이터 로드
   useEffect(() => {
     loadStories();
   }, []);
 
   // location 변경될 때마다 데이터 새로고침 (스토리 작성 후 돌아올 때)
   useEffect(() => {
-    console.log('스토리 페이지 라우팅 변경됨:', location.pathname, location.state);
     if (location.pathname === '/story') {
       console.log('스토리 페이지 진입 - 새로고침 시작');
       loadStories();
@@ -77,11 +92,11 @@ const StoryList: React.FC = () => {
     // 정렬
     const sorted = [...filtered].sort((a, b) => {
       if (sortBy === 'latest') {
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
       }
       // 인기순은 조회수와 북마크 수를 기준으로
-      const scoreA = (a.viewCount || 0) + (a.scrapCount || 0) * 2;
-      const scoreB = (b.viewCount || 0) + (b.scrapCount || 0) * 2;
+      const scoreA = (a.view_count || 0) + (a.scrap_count || 0) * 2;
+      const scoreB = (b.view_count || 0) + (b.scrap_count || 0) * 2;
       return scoreB - scoreA;
     });
 
@@ -274,12 +289,12 @@ const StoryList: React.FC = () => {
                   id={story.id}
                   title={story.title}
                   summary={story.summary}
-                  imageUrl={story.imageUrl}
+                  imageUrl={story.image_url}
                   tags={story.tags}
-                  createdAt={story.createdAt}
-                  readTime={story.readTime}
-                  author={story.author}
-                  authorId={story.author ? sessionUserService.getUserIdByName(story.author) : undefined}
+                  createdAt={story.created_at}
+                  readTime={story.read_time}
+                  author={story.author_name}
+                  authorVerified={story.author_verified}
                 />
               ))}
             </SimpleGrid>

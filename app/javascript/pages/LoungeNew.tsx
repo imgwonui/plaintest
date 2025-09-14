@@ -25,7 +25,7 @@ import { useNavigate } from 'react-router-dom';
 import CustomSelect from '../components/CustomSelect';
 import WYSIWYGEditor from '../components/WYSIWYGEditor';
 // 태그는 API 연결 후 동적으로 로드 예정
-import { sessionLoungeService } from '../services/sessionDataService';
+import { loungeService } from '../services/supabaseDataService';
 import { useAuth } from '../contexts/AuthContext';
 import TagSelector from '../components/TagSelector';
 import PromotionBadge from '../components/PromotionBadge';
@@ -67,14 +67,14 @@ const LoungeNew: React.FC = () => {
     setIsSubmitting(true);
     
     try {
-      // 실제 글 작성 - 세션 데이터에 저장
-      const newPost = sessionLoungeService.create({
+      // 실제 글 작성 - Supabase에 저장
+      const newPost = await loungeService.create({
         title: title.trim(),
         content: content.trim(),
-        author: user.name,
+        author_id: user.id,
+        author_name: type === 'anonymous' ? '익명' : user.name,
         type,
-        tags: selectedTags,
-        authorVerified: user.isVerified || false
+        tags: selectedTags
       });
       
       console.log('새 글이 생성되었습니다:', newPost);

@@ -34,7 +34,7 @@ import {
 import { useNavigate, useParams } from 'react-router-dom';
 import { CloseIcon, DeleteIcon } from '@chakra-ui/icons';
 import WYSIWYGEditor from '../components/WYSIWYGEditor';
-import { sessionStoryService } from '../services/sessionDataService';
+import { storyService } from '../services/supabaseDataService';
 import { useAuth } from '../contexts/AuthContext';
 import { getTagById } from '../data/tags';
 import TagSelector from '../components/TagSelector';
@@ -63,41 +63,56 @@ const StoryEdit: React.FC = () => {
 
   // 스토리 로드 및 권한 확인
   useEffect(() => {
-    const foundStory = sessionStoryService.getById(storyId);
-    if (!foundStory) {
-      toast({
-        title: "스토리를 찾을 수 없습니다",
-        status: "error",
-        duration: 3000,
-      });
-      navigate('/story');
-      return;
-    }
+    const loadStory = async () => {
+      try {
+        const foundStory = await storyService.getById(storyId);
+        if (!foundStory) {
+          toast({
+            title: "스토리를 찾을 수 없습니다",
+            status: "error",
+            duration: 3000,
+          });
+          navigate('/story');
+          return;
+        }
 
-    // 권한 확인: 관리자만 편집 가능
-    if (!isAdmin) {
-      toast({
-        title: "권한이 없습니다",
-        description: "관리자만 스토리를 수정할 수 있습니다",
-        status: "error",
-        duration: 3000,
-      });
-      navigate('/story');
-      return;
-    }
+        // 권한 확인: 관리자만 편집 가능
+        if (!isAdmin) {
+          toast({
+            title: "권한이 없습니다",
+            description: "관리자만 스토리를 수정할 수 있습니다",
+            status: "error",
+            duration: 3000,
+          });
+          navigate('/story');
+          return;
+        }
 
-    // 폼 데이터 설정
-    setStory(foundStory);
-    setTitle(foundStory.title);
-    setContent(foundStory.content);
-    setSummary(foundStory.summary);
-    setReadTime(foundStory.readTime || 5);
-    setSelectedTags(foundStory.tags || []);
-    setIsVerified(foundStory.isVerified || false);
-    setVerificationBadge(foundStory.verificationBadge || '');
-    if (foundStory.imageUrl) {
-      setThumbnailPreview(foundStory.imageUrl);
-    }
+        // 폼 데이터 설정
+        setStory(foundStory);
+        setTitle(foundStory.title);
+        setContent(foundStory.content);
+        setSummary(foundStory.summary);
+        setReadTime(foundStory.read_time || 5);
+        setSelectedTags(foundStory.tags || []);
+        setIsVerified(foundStory.is_verified || false);
+        setVerificationBadge(foundStory.verification_badge || '');
+        if (foundStory.image_url) {
+          setThumbnailPreview(foundStory.image_url);
+        }
+      } catch (error) {
+        console.error('스토리 로드 실패:', error);
+        toast({
+          title: "스토리 로드 실패",
+          description: "스토리를 불러오는 중 오류가 발생했습니다",
+          status: "error",
+          duration: 3000,
+        });
+        navigate('/story');
+      }
+    };
+    
+    loadStory();
   }, [storyId, isAdmin, navigate, toast]);
 
 
@@ -154,28 +169,32 @@ const StoryEdit: React.FC = () => {
     
     try {
       // 이미지 처리
-      let imageUrl = story?.imageUrl;
+      let imageUrl = story?.image_url;
       if (thumbnailImage) {
         imageUrl = thumbnailPreview; // 실제로는 서버에 업로드해야 함
-      } else if (!thumbnailPreview) {
+      }
+      
+      // 이미지는 필수
+      if (!imageUrl && !thumbnailPreview) {
         toast({
           title: "썸네일 이미지를 업로드해주세요",
+          description: "스토리에는 썸네일 이미지가 필요합니다",
           status: "error",
           duration: 3000,
         });
         return;
       }
       
-      // 스토리 수정
-      const updatedStory = sessionStoryService.update(storyId, {
+      // 스토리 수정 (모든 필드 포함)
+      const updatedStory = await storyService.update(storyId, {
         title: title.trim(),
         content: content.trim(),
         summary: summary.trim(),
+        image_url: imageUrl,
+        read_time: readTime,
         tags: selectedTags,
-        readTime,
-        imageUrl,
-        isVerified,
-        verificationBadge: isVerified ? verificationBadge : undefined,
+        is_verified: isVerified,
+        verification_badge: isVerified ? verificationBadge : null
       });
       
       console.log('스토리가 수정되었습니다:', updatedStory);
@@ -204,7 +223,7 @@ const StoryEdit: React.FC = () => {
     setIsDeleting(true);
     
     try {
-      const success = sessionStoryService.delete(storyId);
+      const success = await storyService.delete(storyId);
       
       if (success) {
         toast({

@@ -29,7 +29,7 @@ import AdminHint from '../components/AdminHint';
 import SEOHead from '../components/SEOHead';
 import { ArticleJsonLd, BreadcrumbJsonLd } from '../components/JsonLd';
 import { useAuth } from '../contexts/AuthContext';
-import { sessionStoryService, sessionCommentService, sessionScrapService, sessionLikeService, sessionUserService, initializeData } from '../services/sessionDataService';
+import { storyService, commentService, interactionService, userService } from '../services/supabaseDataService';
 import { formatDate } from '../utils/format';
 import { getTagById } from '../data/tags';
 
@@ -39,57 +39,107 @@ const StoryDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const storyId = parseInt(id || '0');
+
+  // 로딩 상태 처리
+  const [isLoading, setIsLoading] = useState(true);
   
   const [story, setStory] = useState<any>(null);
   const [storyComments, setStoryComments] = useState<any[]>([]);
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
   const [isBookmarked, setIsBookmarked] = useState(false);
-  const [likeCount, setLikeCount] = useState(story?.likeCount || 0);
-  const [scrapCount, setScrapCount] = useState(story?.scrapCount || 0);
+  const [likeCount, setLikeCount] = useState(0);
+  const [scrapCount, setScrapCount] = useState(0);
   const [headings, setHeadings] = useState<Array<{id: string, text: string, level: number}>>([]);
   const [activeHeading, setActiveHeading] = useState<string>('');
   const contentRef = useRef<HTMLDivElement>(null);
   const toast = useToast();
 
-  // 세션 데이터 로드
+  // 스토리 데이터 로드
   useEffect(() => {
-    initializeData();
-    const foundStory = sessionStoryService.getById(storyId);
-    if (foundStory) {
-      console.log('🔍 스토리 로드됨:', foundStory.title);
-      console.log('🔍 검수 배지 정보:', {
-        isVerified: foundStory.isVerified,
-        verificationBadge: foundStory.verificationBadge
-      });
-      setStory(foundStory);
-      setLikeCount(foundStory.likeCount || 0);
-      setScrapCount(foundStory.scrapCount || 0);
-      
-      // 로그인된 사용자의 좋아요/북마크 상태 확인
-      if (isLoggedIn && user) {
-        // 좋아요 상태 확인
-        const isUserLiked = sessionLikeService.isLiked(user.id, storyId, 'story');
-        setIsLiked(isUserLiked);
+    const loadStoryData = async () => {
+      try {
+        setIsLoading(true);
         
-        // 북마크 상태 확인
-        const isScraped = sessionScrapService.isScraped(user.id, storyId, 'story');
-        setIsBookmarked(isScraped);
-      } else {
-        setIsLiked(false);
-        setIsBookmarked(false);
+        // 스토리 데이터 로드
+        const foundStory = await storyService.getById(storyId);
+        if (!foundStory) {
+          toast({
+            title: "스토리를 찾을 수 없습니다",
+            description: "존재하지 않거나 삭제된 스토리입니다.",
+            status: "error",
+            duration: 5000,
+          });
+          navigate('/story');
+          return;
+        }
+
+        console.log('✅ 스토리 로드됨:', foundStory.title);
+        setStory(foundStory);
+        setLikeCount(foundStory.like_count || 0);
+        setScrapCount(foundStory.scrap_count || 0);
+        
+        // 로그인된 사용자의 상호작용 상태 확인
+        if (isLoggedIn && user) {
+          const interactionStatus = await interactionService.checkInteractionStatus(
+            user.id, 
+            storyId, 
+            'story'
+          );
+          setIsLiked(interactionStatus.liked);
+          setIsBookmarked(interactionStatus.scraped);
+        } else {
+          // 로그아웃 시에도 기존 북마크/좋아요 개수는 유지하되, 사용자 개인의 상태만 초기화
+          setIsLiked(false);
+          setIsBookmarked(false);
+        }
+        
+        // 댓글 로드
+        const comments = await commentService.getByPost(storyId, 'story');
+        // Supabase 댓글 데이터를 Comment 컴포넌트 형식으로 변환
+        const transformedComments = (comments || []).map(comment => ({
+          id: comment.id,
+          author: comment.author_name,
+          content: comment.content,
+          createdAt: comment.created_at,
+          isGuest: comment.is_guest,
+          guestPassword: comment.guest_password,
+          authorVerified: comment.author_verified,
+          parentId: comment.parent_id,
+          authorId: comment.author_id,
+          replies: comment.replies ? comment.replies.map(reply => ({
+            id: reply.id,
+            author: reply.author_name,
+            content: reply.content,
+            createdAt: reply.created_at,
+            isGuest: reply.is_guest,
+            guestPassword: reply.guest_password,
+            authorVerified: reply.author_verified,
+            parentId: reply.parent_id,
+            authorId: reply.author_id,
+          })) : []
+        }));
+        setStoryComments(transformedComments);
+        
+      } catch (error) {
+        console.error('❌ 스토리 데이터 로드 실패:', error);
+        toast({
+          title: "데이터 로드 실패",
+          description: "스토리를 불러오는 중 오류가 발생했습니다.",
+          status: "error",
+          duration: 5000,
+        });
+      } finally {
+        setIsLoading(false);
       }
-      
-      // 조회수 증가
-      sessionStoryService.incrementViewCount(storyId);
-      
-      // 댓글 로드 (계층구조)
-      const comments = sessionCommentService.getByPostHierarchical(storyId, 'story');
-      setStoryComments(comments);
+    };
+
+    if (storyId) {
+      loadStoryData();
     }
-  }, [storyId, isLoggedIn, user]);
+  }, [storyId, isLoggedIn, user, navigate, toast]);
   
-  const handleLike = () => {
+  const handleLike = async () => {
     if (!isLoggedIn || !user) {
       toast({
         title: "로그인이 필요해요",
@@ -100,34 +150,38 @@ const StoryDetail: React.FC = () => {
       return;
     }
 
-    if (isLiked) {
-      // 좋아요 해제
-      const success = sessionLikeService.remove(user.id, storyId, 'story');
-      if (success) {
+    try {
+      const result = await interactionService.toggleLike(user.id, storyId, 'story');
+      
+      if (result.action === 'added') {
+        setIsLiked(true);
+        setLikeCount(prev => prev + 1);
+        toast({
+          title: "좋아요를 눌렀습니다",
+          status: "success",
+          duration: 2000,
+        });
+      } else {
         setIsLiked(false);
-        setLikeCount(likeCount - 1);
+        setLikeCount(prev => prev - 1);
         toast({
           title: "좋아요를 취소했습니다",
           status: "success",
           duration: 2000,
         });
       }
-    } else {
-      // 좋아요 추가
-      const success = sessionLikeService.add(user.id, storyId, 'story');
-      if (success) {
-        setIsLiked(true);
-        setLikeCount(likeCount + 1);
-        toast({
-          title: "좋아요를 눌렀습니다",
-          status: "success",
-          duration: 2000,
-        });
-      }
+    } catch (error) {
+      console.error('좋아요 처리 실패:', error);
+      toast({
+        title: "오류가 발생했습니다",
+        description: "잠시 후 다시 시도해주세요",
+        status: "error",
+        duration: 3000,
+      });
     }
   };
 
-  const handleBookmark = () => {
+  const handleBookmark = async () => {
     if (!isLoggedIn || !user) {
       toast({
         title: "로그인이 필요해요",
@@ -138,30 +192,34 @@ const StoryDetail: React.FC = () => {
       return;
     }
 
-    if (isBookmarked) {
-      // 북마크 해제
-      const success = sessionScrapService.remove(user.id, storyId, 'story');
-      if (success) {
+    try {
+      const result = await interactionService.toggleScrap(user.id, storyId, 'story');
+      
+      if (result.action === 'added') {
+        setIsBookmarked(true);
+        setScrapCount(prev => prev + 1);
+        toast({
+          title: "북마크에 추가했습니다",
+          status: "success",
+          duration: 2000,
+        });
+      } else {
         setIsBookmarked(false);
-        setScrapCount(scrapCount - 1);
+        setScrapCount(prev => prev - 1);
         toast({
           title: "북마크를 해제했습니다",
           status: "success",
           duration: 2000,
         });
       }
-    } else {
-      // 북마크 추가
-      const success = sessionScrapService.add(user.id, storyId, 'story');
-      if (success) {
-        setIsBookmarked(true);
-        setScrapCount(scrapCount + 1);
-        toast({
-          title: "북마크에 추가했습니다",
-          status: "success",
-          duration: 2000,
-        });
-      }
+    } catch (error) {
+      console.error('북마크 처리 실패:', error);
+      toast({
+        title: "오류가 발생했습니다",
+        description: "잠시 후 다시 시도해주세요",
+        status: "error",
+        duration: 3000,
+      });
     }
   };
   
@@ -385,10 +443,10 @@ const StoryDetail: React.FC = () => {
     }
   };
   
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (window.confirm('정말로 이 스토리를 삭제하시겠습니까?\n삭제된 스토리는 복구할 수 없습니다.')) {
       try {
-        const success = sessionStoryService.delete(storyId);
+        const success = await storyService.delete(storyId);
         if (success) {
           toast({
             title: '스토리가 삭제되었습니다',
@@ -410,34 +468,103 @@ const StoryDetail: React.FC = () => {
     }
   };
   
-  const relatedStories = useMemo(() => {
-    if (!story) return [];
+  const [relatedStories, setRelatedStories] = useState([]);
+  
+  useEffect(() => {
+    const loadRelatedStories = async () => {
+      if (!story) return;
+      
+      try {
+        const allStoriesResponse = await storyService.getAll();
+        const allStories = allStoriesResponse.stories || [];
+        const related = allStories
+          .filter(s => 
+            s.id !== storyId && 
+            s.tags && story.tags && s.tags.some(tag => story.tags.includes(tag))
+          )
+          .slice(0, 3);
+        setRelatedStories(related);
+      } catch (error) {
+        console.error('관련 스토리 로드 실패:', error);
+        setRelatedStories([]);
+      }
+    };
     
-    const allStories = sessionStoryService.getAll();
-    return allStories
-      .filter(s => 
-        s.id !== storyId && 
-        s.tags.some(tag => story.tags.includes(tag))
-      )
-      .slice(0, 3);
+    loadRelatedStories();
   }, [story, storyId]);
+
+  // 로딩 상태 처리
+  if (isLoading) {
+    return (
+      <Container maxW="1200px" py={8}>
+        <VStack spacing={8}>
+          <Box w="100%" h="400px" bg={colorMode === 'dark' ? '#4d4d59' : '#e4e4e5'} borderRadius="md" />
+          <VStack spacing={4} w="100%">
+            <Box w="80%" h="40px" bg={colorMode === 'dark' ? '#4d4d59' : '#e4e4e5'} borderRadius="md" />
+            <Box w="60%" h="20px" bg={colorMode === 'dark' ? '#4d4d59' : '#e4e4e5'} borderRadius="md" />
+            <Box w="100%" h="200px" bg={colorMode === 'dark' ? '#4d4d59' : '#e4e4e5'} borderRadius="md" />
+          </VStack>
+        </VStack>
+      </Container>
+    );
+  }
+
+  // 스토리가 없는 경우
+  if (!story) {
+    return (
+      <Container maxW="1200px" py={8}>
+        <EmptyState
+          title="스토리를 찾을 수 없습니다"
+          description="존재하지 않거나 삭제된 스토리입니다."
+          actionText="스토리 목록으로 돌아가기"
+          onAction={() => navigate('/story')}
+        />
+      </Container>
+    );
+  }
 
   const handleCommentSubmit = async (content: string, author?: string, password?: string) => {
     setIsSubmittingComment(true);
     
     try {
-      // 실제 댓글 생성 - 세션 데이터에 저장
-      const newComment = sessionCommentService.create({
-        postId: storyId,
-        postType: 'story' as const,
-        author: user ? user.name : (author || "익명"),
+      // 댓글 데이터 생성
+      const newComment = await commentService.create({
+        post_id: storyId,
+        post_type: 'story' as const,
+        author_id: user?.id || null,
+        author_name: user ? user.name : (author || "익명"),
         content,
-        isGuest: !user,
-        guestPassword: password, // 실제로는 해시화해서 저장
-        authorVerified: user?.isVerified || false
+        is_guest: !user,
+        guest_password: password, // Supabase에서 해시화 처리
+        author_verified: user?.isVerified || false
       });
       
-      setStoryComments([...storyComments, newComment]);
+      // 댓글 목록 새로 로드
+      const updatedComments = await commentService.getByPost(storyId, 'story');
+      // Supabase 댓글 데이터를 Comment 컴포넌트 형식으로 변환
+      const transformedComments = (updatedComments || []).map(comment => ({
+        id: comment.id,
+        author: comment.author_name,
+        content: comment.content,
+        createdAt: comment.created_at,
+        isGuest: comment.is_guest,
+        guestPassword: comment.guest_password,
+        authorVerified: comment.author_verified,
+        parentId: comment.parent_id,
+        authorId: comment.author_id,
+        replies: comment.replies ? comment.replies.map(reply => ({
+          id: reply.id,
+          author: reply.author_name,
+          content: reply.content,
+          createdAt: reply.created_at,
+          isGuest: reply.is_guest,
+          guestPassword: reply.guest_password,
+          authorVerified: reply.author_verified,
+          parentId: reply.parent_id,
+          authorId: reply.author_id,
+        })) : []
+      }));
+      setStoryComments(transformedComments);
       
       toast({
         title: "댓글이 등록되었습니다",
@@ -461,21 +588,45 @@ const StoryDetail: React.FC = () => {
     setIsSubmittingComment(true);
     
     try {
-      // 대댓글 생성 - 세션 데이터에 저장
-      const newReply = sessionCommentService.create({
-        postId: storyId,
-        postType: 'story' as const,
-        author: user ? user.name : (author || "익명"),
+      // 대댓글 생성 - Supabase에 저장
+      const newReply = await commentService.create({
+        post_id: storyId,
+        post_type: 'story' as const,
+        author_id: user?.id || null,
+        author_name: user ? user.name : (author || "익명"),
         content,
-        isGuest: !user,
-        guestPassword: password,
-        authorVerified: user?.isVerified || false,
-        parentId: parentId // 부모 댓글 ID
+        is_guest: !user,
+        guest_password: password,
+        author_verified: user?.isVerified || false,
+        parent_id: parentId // 부모 댓글 ID
       });
       
-      // 댓글 목록 새로고침 (계층구조)
-      const updatedComments = sessionCommentService.getByPostHierarchical(storyId, 'story');
-      setStoryComments(updatedComments);
+      // 댓글 목록 새로고침
+      const updatedComments = await commentService.getByPost(storyId, 'story');
+      // Supabase 댓글 데이터를 Comment 컴포넌트 형식으로 변환
+      const transformedComments = (updatedComments || []).map(comment => ({
+        id: comment.id,
+        author: comment.author_name,
+        content: comment.content,
+        createdAt: comment.created_at,
+        isGuest: comment.is_guest,
+        guestPassword: comment.guest_password,
+        authorVerified: comment.author_verified,
+        parentId: comment.parent_id,
+        authorId: comment.author_id,
+        replies: comment.replies ? comment.replies.map(reply => ({
+          id: reply.id,
+          author: reply.author_name,
+          content: reply.content,
+          createdAt: reply.created_at,
+          isGuest: reply.is_guest,
+          guestPassword: reply.guest_password,
+          authorVerified: reply.author_verified,
+          parentId: reply.parent_id,
+          authorId: reply.author_id,
+        })) : []
+      }));
+      setStoryComments(transformedComments);
       
       toast({
         title: "답글이 등록되었습니다",
@@ -497,11 +648,34 @@ const StoryDetail: React.FC = () => {
 
   const handleCommentEdit = async (commentId: number, newContent: string, password?: string) => {
     try {
-      const updatedComment = sessionCommentService.update(commentId, newContent, password);
+      await commentService.update(commentId, newContent, password);
       
-      // 댓글 목록 새로고침 (계층구조)
-      const updatedComments = sessionCommentService.getByPostHierarchical(storyId, 'story');
-      setStoryComments(updatedComments);
+      // 댓글 목록 새로고침
+      const updatedComments = await commentService.getByPost(storyId, 'story');
+      // Supabase 댓글 데이터를 Comment 컴포넌트 형식으로 변환
+      const transformedComments = (updatedComments || []).map(comment => ({
+        id: comment.id,
+        author: comment.author_name,
+        content: comment.content,
+        createdAt: comment.created_at,
+        isGuest: comment.is_guest,
+        guestPassword: comment.guest_password,
+        authorVerified: comment.author_verified,
+        parentId: comment.parent_id,
+        authorId: comment.author_id,
+        replies: comment.replies ? comment.replies.map(reply => ({
+          id: reply.id,
+          author: reply.author_name,
+          content: reply.content,
+          createdAt: reply.created_at,
+          isGuest: reply.is_guest,
+          guestPassword: reply.guest_password,
+          authorVerified: reply.author_verified,
+          parentId: reply.parent_id,
+          authorId: reply.author_id,
+        })) : []
+      }));
+      setStoryComments(transformedComments);
       
       toast({
         title: "댓글이 수정되었습니다",
@@ -521,11 +695,34 @@ const StoryDetail: React.FC = () => {
 
   const handleCommentDelete = async (commentId: number, password?: string) => {
     try {
-      sessionCommentService.delete(commentId, password);
+      await commentService.delete(commentId, password);
       
-      // 댓글 목록 새로고침 (계층구조)
-      const updatedComments = sessionCommentService.getByPostHierarchical(storyId, 'story');
-      setStoryComments(updatedComments);
+      // 댓글 목록 새로고침
+      const updatedComments = await commentService.getByPost(storyId, 'story');
+      // Supabase 댓글 데이터를 Comment 컴포넌트 형식으로 변환
+      const transformedComments = (updatedComments || []).map(comment => ({
+        id: comment.id,
+        author: comment.author_name,
+        content: comment.content,
+        createdAt: comment.created_at,
+        isGuest: comment.is_guest,
+        guestPassword: comment.guest_password,
+        authorVerified: comment.author_verified,
+        parentId: comment.parent_id,
+        authorId: comment.author_id,
+        replies: comment.replies ? comment.replies.map(reply => ({
+          id: reply.id,
+          author: reply.author_name,
+          content: reply.content,
+          createdAt: reply.created_at,
+          isGuest: reply.is_guest,
+          guestPassword: reply.guest_password,
+          authorVerified: reply.author_verified,
+          parentId: reply.parent_id,
+          authorId: reply.author_id,
+        })) : []
+      }));
+      setStoryComments(transformedComments);
       
       toast({
         title: "댓글이 삭제되었습니다",
@@ -572,12 +769,12 @@ const StoryDetail: React.FC = () => {
       <ArticleJsonLd
         title={story.title}
         description={story.summary || story.content?.substring(0, 150).replace(/[#*`]/g, '') + '...'}
-        author={story.author}
-        datePublished={story.createdAt}
-        image={story.imageUrl}
+        author={story.author_name}
+        datePublished={story.created_at}
+        image={story.image_url}
         keywords={story.tags}
         url={`/story/${story.id}`}
-        readTime={story.readTime}
+        readTime={story.read_time}
       />
       <BreadcrumbJsonLd
         items={[
@@ -588,7 +785,7 @@ const StoryDetail: React.FC = () => {
       />
       <Box>
       {/* 썸네일 이미지 - 화면 전체 너비, 헤더 덮음 */}
-      {story.imageUrl && (
+      {story.image_url && (
         <Box 
           position="absolute"
           top="0"
@@ -598,7 +795,7 @@ const StoryDetail: React.FC = () => {
           zIndex="50"
         >
           <Image
-            src={story.imageUrl}
+            src={story.image_url}
             alt={story.title}
             w="100%"
             h="100%"
@@ -642,7 +839,7 @@ const StoryDetail: React.FC = () => {
         </Box>
       )}
 
-      <Box position="relative" zIndex="10" mt={story.imageUrl ? "800px" : "0"}>
+      <Box position="relative" zIndex="10" mt={story.image_url ? "800px" : "0"}>
         <Flex maxW="1400px" mx="auto" py={8} px={4} gap={8}>
           {/* 왼쪽 사이드바 - 목차 네비게이션 */}
           <Box w="250px" flexShrink={0}>
@@ -699,9 +896,9 @@ const StoryDetail: React.FC = () => {
               </AdminHint>
             )}
             
-            {story.isVerified && (
+            {story.is_verified && (
               <AdminHint type="success">
-                {story.verificationBadge || "페이롤 아웃소싱 전문회사인 월급날에서 검수한 글이에요."}
+                {story.verification_badge || "페이롤 아웃소싱 전문회사인 월급날에서 검수한 글이에요."}
               </AdminHint>
             )}
 
@@ -735,11 +932,16 @@ const StoryDetail: React.FC = () => {
             </HStack>
 
             <HStack spacing={4} fontSize="sm" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
-              <Text>{story.author}</Text>
+              <HStack spacing={2} align="center">
+                <Text>{story.author_name}</Text>
+                {story.author_verified && (
+                  <Badge colorScheme="green" size="sm">인사담당자</Badge>
+                )}
+              </HStack>
               <Text>·</Text>
-              <Text>{formatDate(story.createdAt)}</Text>
+              <Text>{formatDate(story.created_at)}</Text>
               <Text>·</Text>
-              <Text>{story.readTime}분 읽기</Text>
+              <Text>{story.read_time}분 읽기</Text>
             </HStack>
 
             <HStack spacing={2} flexWrap="wrap">
@@ -998,12 +1200,11 @@ const StoryDetail: React.FC = () => {
                     id={relatedStory.id}
                     title={relatedStory.title}
                     summary={relatedStory.summary}
-                    imageUrl={relatedStory.imageUrl}
+                    imageUrl={relatedStory.image_url}
                     tags={relatedStory.tags}
-                    createdAt={relatedStory.createdAt}
-                    readTime={relatedStory.readTime}
-                    author={relatedStory.author}
-                    authorId={relatedStory.author ? sessionUserService.getUserIdByName(relatedStory.author) : undefined}
+                    createdAt={relatedStory.created_at}
+                    readTime={relatedStory.read_time}
+                    author={relatedStory.author_name}
                   />
                 ))}
               </SimpleGrid>

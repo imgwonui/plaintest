@@ -22,10 +22,9 @@ import { CardSkeletonGrid } from '../components/LoadingSpinner';
 import SEOHead from '../components/SEOHead';
 import { OrganizationJsonLd, WebSiteJsonLd } from '../components/JsonLd';
 import { WebAnalytics } from '../components/Analytics';
-import { sessionStoryService, sessionLoungeService, sessionUserService, initializeData } from '../services/sessionDataService';
+import { storyService, loungeService, userService, testConnection } from '../services/supabaseDataService';
 import LevelBadge from '../components/UserLevel/LevelBadge';
 import { getUserDisplayLevel } from '../services/userLevelService';
-import { testConnection } from '../services/supabaseService';
 
 const Home: React.FC = () => {
   const { colorMode } = useColorMode();
@@ -33,12 +32,43 @@ const Home: React.FC = () => {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [stories, setStories] = useState<any[]>([]);
   const [loungePosts, setLoungePosts] = useState<any[]>([]);
+  const [displayedLoungePosts, setDisplayedLoungePosts] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showingAllLounge, setShowingAllLounge] = useState(false);
   
-  // 세션 데이터 로드
+  // Supabase 데이터 로드
   useEffect(() => {
-    initializeData();
-    setStories(sessionStoryService.getAll());
-    setLoungePosts(sessionLoungeService.getAll());
+    const loadData = async () => {
+      try {
+        setIsLoading(true);
+        
+        // 스토리와 라운지 포스트를 병렬로 로드
+        const [storiesData, loungeData] = await Promise.all([
+          storyService.getAll(1, 50), // 홈페이지용으로 50개까지
+          loungeService.getAll(1, 50)
+        ]);
+        
+        setStories(storiesData.stories || []);
+        setLoungePosts(loungeData.posts || []);
+        setDisplayedLoungePosts((loungeData.posts || []).slice(0, 15));
+        
+        console.log('✅ Home 데이터 로드 성공:', {
+          스토리수: storiesData.stories?.length || 0,
+          라운지글수: loungeData.posts?.length || 0
+        });
+        
+      } catch (error) {
+        console.error('❌ Home 데이터 로드 실패:', error);
+        // 에러가 발생해도 빈 배열로 설정하여 UI가 깨지지 않도록
+        setStories([]);
+        setLoungePosts([]);
+        setDisplayedLoungePosts([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadData();
   }, []);
   
   // First 5 stories as weekly topics
@@ -61,17 +91,14 @@ const Home: React.FC = () => {
     checkConnection();
   }, []);
   
-  const latestStories = stories.slice(5, 11); // Next 6 stories as latest
-  console.log('🔍 홈페이지 라운지 데이터:', {
-    전체라운지글수: loungePosts.length,
-    라운지글목록: loungePosts.map(p => ({ title: p.title, likeCount: p.likeCount, isExcellent: p.isExcellent }))
-  });
+  // 최신 스토리 6개 (Weekly Topic과 중복 허용)
+  const latestStories = stories.slice(0, 6);
 
-  const hotLoungePosts = loungePosts
-    .filter(post => post.isExcellent || (post.likeCount && post.likeCount > 5) || true) // 임시로 모든 글 표시
-    .slice(0, 12);
-    
-  console.log('🔍 필터링 후 라운지 글:', hotLoungePosts.length, '개');
+  // 더보기 버튼 핸들러
+  const handleShowMoreLounge = () => {
+    setDisplayedLoungePosts(loungePosts);
+    setShowingAllLounge(true);
+  };
 
   const handleNextWeekly = () => {
     if (isTransitioning) return;
@@ -132,7 +159,7 @@ const Home: React.FC = () => {
                   overflow="hidden"
                 >
                   <Image
-                    src={currentWeeklyTopic.imageUrl}
+                    src={currentWeeklyTopic.image_url}
                     alt={currentWeeklyTopic.title}
                     w="750px"
                     h="550px"
@@ -192,15 +219,15 @@ const Home: React.FC = () => {
                     <HStack spacing={6} fontSize="15px" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
                       <HStack spacing={2}>
                         <StarIcon boxSize={4} />
-                        <Text fontWeight="500">{currentWeeklyTopic.likeCount}</Text>
+                        <Text fontWeight="500">{currentWeeklyTopic.like_count}</Text>
                       </HStack>
                       <HStack spacing={2}>
                         <AttachmentIcon boxSize={4} />
-                        <Text fontWeight="500">{currentWeeklyTopic.scrapCount}</Text>
+                        <Text fontWeight="500">{currentWeeklyTopic.scrap_count}</Text>
                       </HStack>
                       <HStack spacing={2}>
                         <ViewIcon boxSize={4} />
-                        <Text fontWeight="500">{currentWeeklyTopic.viewCount || 1245}</Text>
+                        <Text fontWeight="500">{currentWeeklyTopic.view_count || 0}</Text>
                       </HStack>
                     </HStack>
                     
@@ -209,7 +236,7 @@ const Home: React.FC = () => {
                       fontStyle="italic" 
                       color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}
                     >
-                      읽는 데에 {currentWeeklyTopic.readTime}분 정도 걸려요.
+                      읽는 데에 {currentWeeklyTopic.read_time}분 정도 걸려요.
                     </Text>
                   </VStack>
                 </VStack>
@@ -228,7 +255,9 @@ const Home: React.FC = () => {
             </Button>
           </HStack>
 
-          {latestStories.length > 0 ? (
+          {isLoading ? (
+            <CardSkeletonGrid count={6} />
+          ) : latestStories.length > 0 ? (
             <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={6}>
               {latestStories.map((story) => (
                 <Card
@@ -237,12 +266,12 @@ const Home: React.FC = () => {
                   id={story.id}
                   title={story.title}
                   summary={story.summary}
-                  imageUrl={story.imageUrl}
+                  imageUrl={story.image_url}
                   tags={story.tags}
-                  createdAt={story.createdAt}
-                  readTime={story.readTime}
-                  author={story.author}
-                  authorId={story.author ? sessionUserService.getUserIdByName(story.author) : undefined}
+                  createdAt={story.created_at}
+                  readTime={story.read_time}
+                  author={story.author_name}
+                  authorVerified={story.author_verified}
                 />
               ))}
             </SimpleGrid>
@@ -265,9 +294,12 @@ const Home: React.FC = () => {
             </Button>
           </HStack>
 
-          {hotLoungePosts.length > 0 ? (
-            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-              {hotLoungePosts.map((post) => (
+          {isLoading ? (
+            <CardSkeletonGrid count={15} />
+          ) : displayedLoungePosts.length > 0 ? (
+            <>
+              <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+                {displayedLoungePosts.map((post) => (
                 <Box
                   key={post.id}
                   as={Link}
@@ -288,14 +320,26 @@ const Home: React.FC = () => {
                       <Badge
                         colorScheme={
                           post.type === 'question' ? 'blue' :
-                          post.type === 'experience' ? 'green' : 'purple'
+                          post.type === 'experience' ? 'green' :
+                          post.type === 'info' ? 'purple' :
+                          post.type === 'free' ? 'gray' :
+                          post.type === 'news' ? 'orange' :
+                          post.type === 'advice' ? 'teal' :
+                          post.type === 'recommend' ? 'pink' :
+                          post.type === 'anonymous' ? 'red' : 'gray'
                         }
                         size="sm"
                       >
                         {post.type === 'question' ? '질문' :
-                         post.type === 'experience' ? '경험' : '도움'}
+                         post.type === 'experience' ? '경험' : 
+                         post.type === 'info' ? '정보' :
+                         post.type === 'free' ? '자유' :
+                         post.type === 'news' ? '뉴스에 한마디' :
+                         post.type === 'advice' ? '조언' :
+                         post.type === 'recommend' ? '추천' :
+                         post.type === 'anonymous' ? '익명' : '기타'}
                       </Badge>
-                      {post.isExcellent && (
+                      {post.is_excellent && (
                         <Badge colorScheme="yellow" size="sm">
                           우수
                         </Badge>
@@ -318,15 +362,38 @@ const Home: React.FC = () => {
                       lineHeight="1.4"
                       noOfLines={2}
                     >
-                      {post.summary}
+                      {(() => {
+                        if (!post.content) return '';
+                        
+                        // HTML 태그 제거
+                        let stripped = post.content.replace(/<[^>]*>/g, '');
+                        
+                        // HTML 엔티티 디코딩
+                        stripped = stripped
+                          .replace(/&nbsp;/g, ' ')
+                          .replace(/&amp;/g, '&')
+                          .replace(/&lt;/g, '<')
+                          .replace(/&gt;/g, '>')
+                          .replace(/&quot;/g, '"')
+                          .replace(/&#39;/g, "'")
+                          .replace(/&apos;/g, "'");
+                        
+                        // 여러 공백을 하나로 정리
+                        stripped = stripped.replace(/\s+/g, ' ').trim();
+                        
+                        // 길이 제한
+                        return stripped.length > 100 ? 
+                          `${stripped.substring(0, 97)}...` : 
+                          stripped;
+                      })()}
                     </Text>
                     
                     <HStack spacing={4} fontSize="xs" color={colorMode === 'dark' ? '#7e7e87' : '#626269'}>
                       <HStack spacing={2} align="center">
-                        <Text>{post.author}</Text>
-                        {post.author && (
+                        <Text>{post.author_name}</Text>
+                        {post.author_id && (
                           <LevelBadge 
-                            level={getUserDisplayLevel(sessionUserService.getUserIdByName(post.author) || 1).level} 
+                            level={getUserDisplayLevel(post.author_id).level} 
                             size="xs" 
                             variant="subtle"
                             showIcon={true}
@@ -334,14 +401,36 @@ const Home: React.FC = () => {
                         )}
                       </HStack>
                       <Text>·</Text>
-                      <Text>{post.likeCount}개 좋아요</Text>
+                      <Text>{new Date(post.created_at).toLocaleDateString('ko-KR', {
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}</Text>
                       <Text>·</Text>
-                      <Text>{post.commentCount}개 댓글</Text>
+                      <Text>{post.like_count}개 좋아요</Text>
+                      <Text>·</Text>
+                      <Text>{post.comment_count}개 댓글</Text>
                     </HStack>
                   </VStack>
                 </Box>
               ))}
-            </SimpleGrid>
+              </SimpleGrid>
+              
+              {/* 더보기 버튼 */}
+              {!showingAllLounge && loungePosts.length > 15 && (
+                <HStack justify="center" pt={6}>
+                  <Button 
+                    onClick={handleShowMoreLounge}
+                    variant="outline" 
+                    size="md"
+                    colorScheme="brand"
+                  >
+                    더보기 ({loungePosts.length - 15}개 더)
+                  </Button>
+                </HStack>
+              )}
+            </>
           ) : (
             <EmptyState
               title="아직 라운지 글이 없어요"

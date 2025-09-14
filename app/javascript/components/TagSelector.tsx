@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   VStack,
@@ -26,7 +26,7 @@ import {
   AccordionIcon,
 } from '@chakra-ui/react';
 import { AddIcon } from '@chakra-ui/icons';
-import { tagCategories, TagCategory, Tag as TagType } from '../data/tags';
+import { getDynamicTagCategoriesAsync, TagCategory, Tag as TagType } from '../data/tags';
 
 interface TagSelectorProps {
   selectedTags: string[];
@@ -44,6 +44,24 @@ const TagSelector: React.FC<TagSelectorProps> = ({
   const { colorMode } = useColorMode();
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [tempSelectedTags, setTempSelectedTags] = useState<string[]>([]);
+  const [tagCategories, setTagCategories] = useState<TagCategory[]>([]);
+
+  // 컴포넌트 마운트 시 태그 카테고리 로드
+  useEffect(() => {
+    const loadTagCategories = async () => {
+      try {
+        console.log('🏷️ TagSelector: 태그 카테고리 로드 중...');
+        const categories = await getDynamicTagCategoriesAsync();
+        setTagCategories(categories);
+        console.log('✅ TagSelector: 태그 카테고리 로드 완료:', categories.length, '개 카테고리');
+      } catch (error) {
+        console.error('❌ TagSelector: 태그 카테고리 로드 실패:', error);
+        setTagCategories([]);
+      }
+    };
+
+    loadTagCategories();
+  }, []);
 
   const handleModalOpen = () => {
     setTempSelectedTags([...selectedTags]); // 현재 선택된 태그들을 임시 상태로 복사

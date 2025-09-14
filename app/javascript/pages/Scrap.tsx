@@ -19,7 +19,7 @@ import { useNavigate } from 'react-router-dom';
 import Card from '../components/Card';
 import EmptyState from '../components/EmptyState';
 import { useAuth } from '../contexts/AuthContext';
-import { sessionScrapService, sessionUserService, initializeData } from '../services/sessionDataService';
+import { interactionService, storyService, loungeService } from '../services/supabaseDataService';
 
 const Scrap: React.FC = () => {
   const { colorMode } = useColorMode();
@@ -28,16 +28,68 @@ const Scrap: React.FC = () => {
   
   const [scrappedStories, setScrappedStories] = useState<any[]>([]);
   const [scrappedLoungePosts, setScrappedLoungePosts] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   // 북마크 데이터 로드 함수
-  const loadScraps = () => {
+  const loadScraps = async () => {
     if (isLoggedIn && user) {
-      initializeData();
-      const stories = sessionScrapService.getUserStories(user.id);
-      const loungePosts = sessionScrapService.getUserLoungePosts(user.id);
-      setScrappedStories(stories);
-      setScrappedLoungePosts(loungePosts);
-      console.log('북마크 데이터 로드:', { stories: stories.length, loungePosts: loungePosts.length });
+      try {
+        setIsLoading(true);
+        console.log('🔖 북마크 데이터 로드 시작:', { userId: user.id });
+        
+        // 사용자의 북마크 목록 가져오기
+        const bookmarks = await interactionService.getUserBookmarks(user.id);
+        console.log('📋 북마크 목록:', bookmarks);
+        
+        // 스토리와 라운지 북마크 분리
+        const storyBookmarks = bookmarks.filter(bookmark => bookmark.post_type === 'story');
+        const loungeBookmarks = bookmarks.filter(bookmark => bookmark.post_type === 'lounge');
+        
+        // 각 북마크의 실제 게시글 데이터 가져오기
+        const [storyDetails, loungeDetails] = await Promise.all([
+          Promise.all(storyBookmarks.map(async (bookmark) => {
+            try {
+              const story = await storyService.getById(bookmark.post_id);
+              return story ? { ...story, bookmarkCreatedAt: bookmark.created_at } : null;
+            } catch (error) {
+              console.error('스토리 로드 실패:', bookmark.post_id, error);
+              return null;
+            }
+          })),
+          Promise.all(loungeBookmarks.map(async (bookmark) => {
+            try {
+              const post = await loungeService.getById(bookmark.post_id);
+              return post ? { ...post, bookmarkCreatedAt: bookmark.created_at } : null;
+            } catch (error) {
+              console.error('라운지 글 로드 실패:', bookmark.post_id, error);
+              return null;
+            }
+          }))
+        ]);
+        
+        // null 값 제거하고 북마크 생성 시간순으로 정렬
+        const validStories = storyDetails.filter(story => story !== null)
+          .sort((a, b) => new Date(b.bookmarkCreatedAt).getTime() - new Date(a.bookmarkCreatedAt).getTime());
+        const validLounges = loungeDetails.filter(post => post !== null)
+          .sort((a, b) => new Date(b.bookmarkCreatedAt).getTime() - new Date(a.bookmarkCreatedAt).getTime());
+        
+        setScrappedStories(validStories);
+        setScrappedLoungePosts(validLounges);
+        
+        console.log('✅ 북마크 데이터 로드 성공:', { 
+          stories: validStories.length, 
+          loungePosts: validLounges.length 
+        });
+        
+      } catch (error) {
+        console.error('❌ 북마크 데이터 로드 실패:', error);
+        setScrappedStories([]);
+        setScrappedLoungePosts([]);
+      } finally {
+        setIsLoading(false);
+      }
+    } else {
+      setIsLoading(false);
     }
   };
 
@@ -123,7 +175,13 @@ const Scrap: React.FC = () => {
           <TabPanels>
             {/* Story 북마크 */}
             <TabPanel p={0}>
-              {scrappedStories.length > 0 ? (
+              {isLoading ? (
+                <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={6}>
+                  {[...Array(6)].map((_, index) => (
+                    <Box key={index} h="300px" bg={colorMode === 'dark' ? '#3c3c47' : '#f7f7f7'} borderRadius="xl" />
+                  ))}
+                </SimpleGrid>
+              ) : scrappedStories.length > 0 ? (
                 <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={6}>
                   {scrappedStories.map((story) => (
                     <Card
@@ -132,12 +190,13 @@ const Scrap: React.FC = () => {
                       id={story.id}
                       title={story.title}
                       summary={story.summary}
-                      imageUrl={story.imageUrl}
+                      imageUrl={story.image_url}
                       tags={story.tags}
-                      createdAt={story.createdAt}
-                      readTime={story.readTime}
-                      author={story.author}
-                      authorId={story.author ? sessionUserService.getUserIdByName(story.author) : undefined}
+                      createdAt={story.created_at}
+                      readTime={story.read_time}
+                      author={story.author_name}
+                      authorId={story.author_id}
+                      authorVerified={story.author_verified}
                     />
                   ))}
                 </SimpleGrid>
@@ -153,7 +212,13 @@ const Scrap: React.FC = () => {
             
             {/* Lounge 북마크 */}
             <TabPanel p={0}>
-              {scrappedLoungePosts.length > 0 ? (
+              {isLoading ? (
+                <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={6}>
+                  {[...Array(6)].map((_, index) => (
+                    <Box key={index} h="300px" bg={colorMode === 'dark' ? '#3c3c47' : '#f7f7f7'} borderRadius="xl" />
+                  ))}
+                </SimpleGrid>
+              ) : scrappedLoungePosts.length > 0 ? (
                 <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={6}>
                   {scrappedLoungePosts.map((post) => (
                     <Card
@@ -161,15 +226,16 @@ const Scrap: React.FC = () => {
                       type="lounge"
                       id={post.id}
                       title={post.title}
-                      summary={post.summary}
+                      summary={post.content}
                       tags={post.tags}
-                      createdAt={post.createdAt}
+                      createdAt={post.created_at}
                       loungeType={post.type}
-                      isExcellent={post.isExcellent}
-                      likeCount={post.likeCount}
-                      commentCount={post.commentCount}
-                      author={post.author}
-                      authorId={post.author ? sessionUserService.getUserIdByName(post.author) : undefined}
+                      isExcellent={post.is_excellent}
+                      likeCount={post.like_count}
+                      commentCount={post.comment_count}
+                      scrapCount={post.scrap_count}
+                      author={post.author_name}
+                      authorId={post.author_id}
                     />
                   ))}
                 </SimpleGrid>

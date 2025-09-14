@@ -57,8 +57,9 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { EditIcon, InfoIcon, SettingsIcon } from '@chakra-ui/icons';
 import { levelConfig, LevelUtils } from '../data/levelConfig';
-import { userLevelService, getUserDisplayLevel } from '../services/userLevelService';
-import { sessionUserService, initializeData } from '../services/sessionDataService';
+import { userService } from '../services/supabaseDataService';
+import { supabase } from '../lib/supabaseClient';
+import { getUserDisplayLevel } from '../services/userLevelService';
 import UserLevelIcon from '../components/UserLevel/UserLevelIcon';
 import LevelBadge from '../components/UserLevel/LevelBadge';
 
@@ -74,9 +75,15 @@ const AdminLevels: React.FC = () => {
   const [users, setUsers] = useState<any[]>([]);
   const [levelStats, setLevelStats] = useState<any>({});
   const [currentConfig, setCurrentConfig] = useState(() => {
-    // 세션에서 저장된 설정이 있으면 사용, 없으면 기본값 사용
-    return userLevelService.getCurrentLevelConfig();
+    // 기본 레벨 설정 사용
+    return levelConfig;
   });
+  
+  // 페이지네이션 및 필터링 상태
+  const [currentPage, setCurrentPage] = useState(1);
+  const [usersPerPage] = useState(10);
+  const [levelFilter, setLevelFilter] = useState<string>('all'); // 'all', '1-10', '11-20', etc.
+  const [isLoading, setIsLoading] = useState(false);
 
   // 관리자 권한 체크
   useEffect(() => {
@@ -85,105 +92,196 @@ const AdminLevels: React.FC = () => {
     }
   }, [isAdmin, navigate]);
 
-  // 데이터 로드 (세션 데이터 기반)
-  useEffect(() => {
-    if (!isAdmin) return;
-    
-    initializeData();
-    
-    // 모든 사용자 레벨 데이터 동기화
-    userLevelService.syncAllUserLevels();
-    
-    // 실제 활동 기록이 있는 사용자들만 가져오기
-    const allUsers = sessionUserService.getAll();
-    
-    // 각 사용자의 레벨 정보 계산 (실제 데이터 기반)
-    const usersWithLevels = allUsers.map(user => {
-      const levelInfo = getUserDisplayLevel(user.id);
-      return {
-        ...user,
-        ...levelInfo
-      };
-    });
-    
-    // 레벨별 통계 계산
-    const stats: any = {};
-    // 1부터 99까지 모든 레벨에 대해 통계 계산
-    for (let level = 1; level <= 99; level++) {
-      const usersAtLevel = usersWithLevels.filter(u => u.level === level);
-      stats[level] = usersAtLevel.length;
+  // 데이터 로드 함수 (재사용 가능)
+  const loadUserLevelData = async () => {
+    if (!isAdmin) {
+      console.log('❌ 관리자 권한 없음, 레벨 데이터 로드 중단');
+      return;
     }
     
-    setUsers(usersWithLevels);
-    setLevelStats(stats);
-    
-    // 현재 레벨 설정도 세션에서 가져오기
-    setCurrentConfig(userLevelService.getCurrentLevelConfig());
-    
-    console.log(`📈 관리자 페이지: ${allUsers.length}명의 사용자 레벨 정보 로드 완료`);
-  }, [isAdmin]);
-
-  const handleConfigSave = () => {
-    // 세션 스토리지에 레벨 설정 저장
-    userLevelService.updateLevelConfig(currentConfig);
-    
-    toast({
-      title: "설정이 저장되었습니다",
-      description: "레벨 시스템 설정이 세션에 저장되었습니다.",
-      status: "success",
-      duration: 3000,
-    });
-    
-    // 모든 사용자 레벨 재계산
-    userLevelService.syncAllUserLevels();
-    
-    // 데이터 새로고침
-    const allUsers = sessionUserService.getAll();
-    const usersWithLevels = allUsers.map(user => {
-      const levelInfo = getUserDisplayLevel(user.id);
-      return {
-        ...user,
-        ...levelInfo
-      };
-    });
-    
-    setUsers(usersWithLevels);
-    onConfigClose();
+    setIsLoading(true);
+    try {
+      console.log('🔄 사용자 레벨 데이터 로드 시작...');
+      
+      // Supabase에서 모든 사용자 레벨 정보 조회
+      const userLevelsResult = await userService.getAllUserLevels(1, 1000);
+      const userLevelsData = userLevelsResult.userLevels || [];
+      
+      console.log('📊 사용자 레벨 원시 데이터:', userLevelsData.length, '개 레코드');
+      
+      // 사용자 정보와 레벨 정보 결합
+      const usersWithLevels = userLevelsData.map(userLevel => {
+        const userData = userLevel.user;
+        return {
+          id: userLevel.user_id,
+          name: userData?.name || 'Unknown User',
+          email: userData?.email || 'no-email@plain.com',
+          isAdmin: userData?.is_admin || false,
+          isVerified: userData?.is_verified || false,
+          createdAt: userData?.created_at || new Date().toISOString(),
+          level: userLevel.level || 1,
+          totalExp: userLevel.current_exp || 0,
+          totalLikes: userLevel.total_likes || 0,
+          storyPromotions: userLevel.story_promotions || 0,
+          totalBookmarks: userLevel.total_bookmarks || 0,
+          totalPosts: userLevel.total_posts || 0,
+          totalComments: userLevel.total_comments || 0,
+          excellentPosts: userLevel.excellent_posts || 0,
+          achievements: userLevel.achievements || []
+        };
+      });
+      
+      // 레벨별 통계 계산 (1~99레벨)
+      const stats: any = {};
+      for (let level = 1; level <= 99; level++) {
+        const usersAtLevel = usersWithLevels.filter(u => u.level === level);
+        if (usersAtLevel.length > 0) {
+          stats[level] = usersAtLevel.length;
+        }
+      }
+      
+      setUsers(usersWithLevels);
+      setLevelStats(stats);
+      
+      console.log(`✅ 관리자 페이지: ${usersWithLevels.length}명의 사용자 레벨 정보 로드 완료`);
+      
+    } catch (error) {
+      console.error('❌ 사용자 레벨 데이터 로드 실패:', error);
+      
+      setUsers([]);
+      setLevelStats({});
+      
+      toast({
+        title: "데이터 로드 실패",
+        description: error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.",
+        status: "error",
+        duration: 5000,
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleResetAllLevels = () => {
-    // 세션 스토리지에서 모든 사용자 레벨 초기화
-    userLevelService.resetAllLevels();
+  // 컴포넌트 마운트 시 데이터 로드
+  useEffect(() => {
+    loadUserLevelData();
+  }, [isAdmin]);
+
+  // 레벨 필터링된 사용자 목록 계산
+  const filteredUsers = users.filter(user => {
+    if (levelFilter === 'all') return true;
     
-    // 모든 사용자 레벨 재동기화
-    userLevelService.syncAllUserLevels();
-    
-    // 데이터 새로고침
-    const allUsers = sessionUserService.getAll();
-    const usersWithLevels = allUsers.map(user => {
-      const levelInfo = getUserDisplayLevel(user.id);
-      return {
-        ...user,
-        ...levelInfo
-      };
-    });
-    
-    // 레벨별 통계 재계산
-    const stats: any = {};
-    for (let level = 1; level <= 99; level++) {
-      const usersAtLevel = usersWithLevels.filter(u => u.level === level);
-      stats[level] = usersAtLevel.length;
+    const [minLevel, maxLevel] = levelFilter.split('-').map(Number);
+    return user.level >= minLevel && user.level <= maxLevel;
+  });
+
+  // 페이지네이션된 사용자 목록 계산
+  const totalPages = Math.ceil(filteredUsers.length / usersPerPage);
+  const startIndex = (currentPage - 1) * usersPerPage;
+  const endIndex = startIndex + usersPerPage;
+  const currentUsers = filteredUsers
+    .sort((a, b) => (b.level - a.level) || (b.totalExp - a.totalExp))
+    .slice(startIndex, endIndex);
+
+  // 실시간 통계 계산 (최신 데이터 반영)
+  const maxLevel = users.length > 0 ? Math.max(...users.map(u => u.level)) : 1;
+  const avgLevel = users.length > 0 ? Math.round(users.reduce((sum, u) => sum + u.level, 0) / users.length) : 1;
+  const legendUsers = users.filter(u => u.level >= 90).length; // 90레벨 이상을 레전드로 설정
+
+  const handleConfigSave = async () => {
+    try {
+      // 레벨 설정 저장 (로컬 스토리지에 저장)
+      localStorage.setItem('levelConfig', JSON.stringify(currentConfig));
+      
+      toast({
+        title: "설정이 저장되었습니다",
+        description: "레벨 시스템 설정이 저장되었습니다.",
+        status: "success",
+        duration: 3000,
+      });
+      
+      onConfigClose();
+    } catch (error) {
+      console.error('설정 저장 실패:', error);
+      toast({
+        title: "오류",
+        description: "설정 저장에 실패했습니다.",
+        status: "error",
+        duration: 3000,
+      });
+    }
+  };
+
+  const handleResetAllLevels = async () => {
+    try {
+      // 데이터베이스에서 모든 사용자 레벨 초기화
+      const { data: allUserLevels } = await supabase
+        .from('user_levels')
+        .select('user_id');
+      
+      if (allUserLevels && allUserLevels.length > 0) {
+        // 모든 사용자 레벨을 1로, 경험치를 0으로 초기화
+        for (const userLevel of allUserLevels) {
+          await userService.updateUserLevel(userLevel.user_id, {
+            current_exp: 0,
+            level: 1,
+            total_likes: 0,
+            story_promotions: 0,
+            total_bookmarks: 0,
+            total_posts: 0,
+            total_comments: 0,
+            excellent_posts: 0,
+            achievements: []
+          });
+        }
+      }
+      
+      // 데이터 다시 로드
+      const userLevelsResult = await userService.getAllUserLevels(1, 1000);
+      const userLevelsData = userLevelsResult.userLevels || [];
+      
+      const usersWithLevels = userLevelsData.map(userLevel => {
+        const userData = userLevel.user;
+        return {
+          id: userLevel.user_id,
+          name: userData?.name || 'Unknown',
+          email: userData?.email || '',
+          isAdmin: userData?.is_admin || false,
+          isVerified: userData?.is_verified || false,
+          createdAt: userData?.created_at,
+          level: userLevel.level,
+          totalExp: userLevel.current_exp,
+          totalLikes: userLevel.total_likes
+        };
+      });
+      
+      // 레벨별 통계 재계산
+      const stats: any = {};
+      for (let level = 1; level <= 99; level++) {
+        const usersAtLevel = usersWithLevels.filter(u => u.level === level);
+        stats[level] = usersAtLevel.length;
+      }
+      
+      setUsers(usersWithLevels);
+      setLevelStats(stats);
+      
+      toast({
+        title: "모든 레벨이 초기화되었습니다",
+        description: "데이터베이스의 모든 사용자 레벨이 초기화되었습니다.",
+        status: "success",
+        duration: 3000,
+      });
+      
+    } catch (error) {
+      console.error('레벨 초기화 실패:', error);
+      toast({
+        title: "오류",
+        description: "레벨 초기화에 실패했습니다.",
+        status: "error",
+        duration: 3000,
+      });
     }
     
-    setUsers(usersWithLevels);
-    setLevelStats(stats);
-    
-    toast({
-      title: "모든 레벨이 초기화되었습니다",
-      description: "세션 스토리지의 모든 사용자 레벨이 초기화되었습니다.",
-      status: "success",
-      duration: 3000,
-    });
     onResetClose();
   };
 
@@ -213,6 +311,55 @@ const AdminLevels: React.FC = () => {
               시스템 설정
             </Button>
             <Button
+              colorScheme="blue"
+              isLoading={isLoading}
+              onClick={async () => {
+                try {
+                  setIsLoading(true);
+                  toast({
+                    title: "실제 레벨 재계산 중...",
+                    description: "모든 사용자의 실제 활동 데이터를 기반으로 레벨을 재계산합니다.",
+                    status: "loading",
+                    duration: null,
+                  });
+                  
+                  // 모든 사용자의 레벨 재계산
+                  const allUsers = await userService.getAllUsers(1, 1000);
+                  console.log(`🔄 ${allUsers.users.length}명의 사용자 레벨 재계산 시작`);
+                  
+                  for (const user of allUsers.users) {
+                    await userService.recalculateUserLevel(user.id);
+                  }
+                  
+                  console.log('✅ 모든 사용자 레벨 재계산 완료');
+                  
+                  // 데이터 다시 로드 (강제 새로고침)
+                  await loadUserLevelData();
+                  
+                  toast.closeAll();
+                  toast({
+                    title: "실제 레벨 재계산 완료!",
+                    description: `${users.length}명 사용자의 실제 활동 기반 레벨이 업데이트되었습니다.`,
+                    status: "success",
+                    duration: 5000,
+                  });
+                  
+                } catch (error) {
+                  toast.closeAll();
+                  toast({
+                    title: "재계산 실패",
+                    description: error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.",
+                    status: "error",
+                    duration: 5000,
+                  });
+                } finally {
+                  setIsLoading(false);
+                }
+              }}
+            >
+              실제 데이터로 재계산
+            </Button>
+            <Button
               colorScheme="red"
               variant="outline"
               onClick={onResetOpen}
@@ -222,7 +369,7 @@ const AdminLevels: React.FC = () => {
           </HStack>
         </HStack>
 
-        {/* 레벨 시스템 개요 */}
+        {/* 레벨 시스템 개요 (실시간 데이터) */}
         <SimpleGrid columns={{ base: 1, md: 4 }} spacing={6}>
           <Card bg={colorMode === 'dark' ? '#3c3c47' : 'white'} border={colorMode === 'dark' ? '1px solid #4d4d59' : '1px solid #e4e4e5'}>
             <CardBody>
@@ -240,7 +387,7 @@ const AdminLevels: React.FC = () => {
               <VStack spacing={2}>
                 <Text fontSize="sm" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>최고 레벨</Text>
                 <Text fontSize="2xl" fontWeight="bold" color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}>
-                  LV{Math.max(...users.map(u => u.level || 1), 1)}
+                  LV{maxLevel}
                 </Text>
               </VStack>
             </CardBody>
@@ -251,7 +398,7 @@ const AdminLevels: React.FC = () => {
               <VStack spacing={2}>
                 <Text fontSize="sm" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>평균 레벨</Text>
                 <Text fontSize="2xl" fontWeight="bold" color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}>
-                  LV{users.length > 0 ? Math.round(users.reduce((sum, u) => sum + (u.level || 1), 0) / users.length) : 1}
+                  LV{avgLevel}
                 </Text>
               </VStack>
             </CardBody>
@@ -262,7 +409,7 @@ const AdminLevels: React.FC = () => {
               <VStack spacing={2}>
                 <Text fontSize="sm" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>레전드 (LV90+)</Text>
                 <Text fontSize="2xl" fontWeight="bold" color="gold">
-                  {users.filter(u => (u.level || 1) >= 90).length}명
+                  {legendUsers}명
                 </Text>
               </VStack>
             </CardBody>
@@ -331,94 +478,215 @@ const AdminLevels: React.FC = () => {
           </CardBody>
         </Card>
 
-        {/* 사용자 레벨 현황 */}
+        {/* 사용자 레벨 현황 (필터링 및 페이지네이션) */}
         <Card bg={colorMode === 'dark' ? '#3c3c47' : 'white'} border={colorMode === 'dark' ? '1px solid #4d4d59' : '1px solid #e4e4e5'}>
           <CardHeader>
-            <HStack justify="space-between" align="center">
-              <Heading as="h3" size="md" color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}>
-                사용자 레벨 현황
-              </Heading>
-              <Text fontSize="sm" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
-                총 {users.length}명
-              </Text>
-            </HStack>
+            <VStack spacing={4} align="stretch">
+              <HStack justify="space-between" align="center">
+                <Heading as="h3" size="md" color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}>
+                  사용자 레벨 현황
+                </Heading>
+                <Text fontSize="sm" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
+                  총 {filteredUsers.length}명 ({users.length}명 중)
+                </Text>
+              </HStack>
+              
+              {/* 레벨 필터 (99레벨까지) */}
+              <HStack spacing={2} flexWrap="wrap">
+                <Text fontSize="sm" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
+                  레벨 구간:
+                </Text>
+                <Button 
+                  size="xs" 
+                  variant={levelFilter === 'all' ? 'solid' : 'outline'}
+                  onClick={() => {
+                    setLevelFilter('all');
+                    setCurrentPage(1);
+                  }}
+                >
+                  전체
+                </Button>
+                <Button 
+                  size="xs" 
+                  variant={levelFilter === '1-10' ? 'solid' : 'outline'}
+                  onClick={() => {
+                    setLevelFilter('1-10');
+                    setCurrentPage(1);
+                  }}
+                >
+                  LV 1-10
+                </Button>
+                <Button 
+                  size="xs" 
+                  variant={levelFilter === '11-30' ? 'solid' : 'outline'}
+                  onClick={() => {
+                    setLevelFilter('11-30');
+                    setCurrentPage(1);
+                  }}
+                >
+                  LV 11-30
+                </Button>
+                <Button 
+                  size="xs" 
+                  variant={levelFilter === '31-50' ? 'solid' : 'outline'}
+                  onClick={() => {
+                    setLevelFilter('31-50');
+                    setCurrentPage(1);
+                  }}
+                >
+                  LV 31-50
+                </Button>
+                <Button 
+                  size="xs" 
+                  variant={levelFilter === '51-70' ? 'solid' : 'outline'}
+                  onClick={() => {
+                    setLevelFilter('51-70');
+                    setCurrentPage(1);
+                  }}
+                >
+                  LV 51-70
+                </Button>
+                <Button 
+                  size="xs" 
+                  variant={levelFilter === '71-90' ? 'solid' : 'outline'}
+                  onClick={() => {
+                    setLevelFilter('71-90');
+                    setCurrentPage(1);
+                  }}
+                >
+                  LV 71-90
+                </Button>
+                <Button 
+                  size="xs" 
+                  variant={levelFilter === '91-99' ? 'solid' : 'outline'}
+                  onClick={() => {
+                    setLevelFilter('91-99');
+                    setCurrentPage(1);
+                  }}
+                >
+                  LV 91-99
+                </Button>
+              </HStack>
+            </VStack>
           </CardHeader>
           <CardBody>
-            <Table variant="simple" size="md">
-              <Thead>
-                <Tr>
-                  <Th color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>사용자</Th>
-                  <Th color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>레벨</Th>
-                  <Th color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>경험치</Th>
-                  <Th color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>진행률</Th>
-                  <Th color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>가입일</Th>
-                </Tr>
-              </Thead>
-              <Tbody>
-                {users
-                  .sort((a, b) => (b.level || 1) - (a.level || 1) || (b.totalExp || 0) - (a.totalExp || 0))
-                  .slice(0, 20) // 상위 20명만 표시
-                  .map((user) => {
-                    const currentLevel = user.level || 1;
-                    const nextLevel = currentLevel < 99 ? currentLevel + 1 : currentLevel;
-                    const currentLevelExp = currentLevel > 1 ? LevelUtils.getRequiredExpForLevel(currentLevel) : 0;
-                    const nextLevelExp = currentLevel < 99 ? LevelUtils.getRequiredExpForLevel(nextLevel) : user.totalExp || 0;
-                    const progress = currentLevel >= 99 ? 100 : 
-                      nextLevelExp > currentLevelExp ? 
-                        ((user.totalExp || 0) - currentLevelExp) / (nextLevelExp - currentLevelExp) * 100 : 0;
-                    
-                    return (
-                      <Tr key={user.id}>
-                        <Td>
-                          <HStack spacing={2}>
-                            <Text fontWeight="500" color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}>
-                              {user.name}
+            {isLoading ? (
+              <Box textAlign="center" py={8}>
+                <Text color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
+                  데이터 로딩 중...
+                </Text>
+              </Box>
+            ) : currentUsers.length === 0 ? (
+              <Box textAlign="center" py={8}>
+                <Text color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
+                  해당 레벨 구간에 사용자가 없습니다.
+                </Text>
+              </Box>
+            ) : (
+              <>
+                <Table variant="simple" size="md">
+                  <Thead>
+                    <Tr>
+                      <Th color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>순위</Th>
+                      <Th color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>사용자</Th>
+                      <Th color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>레벨</Th>
+                      <Th color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>경험치</Th>
+                      <Th color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>활동</Th>
+                      <Th color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>가입일</Th>
+                    </Tr>
+                  </Thead>
+                  <Tbody>
+                    {currentUsers.map((user, index) => {
+                      const globalRank = startIndex + index + 1;
+                      const currentLevel = user.level || 1;
+                      
+                      return (
+                        <Tr key={user.id}>
+                          <Td>
+                            <Text fontSize="sm" fontWeight="bold" color={colorMode === 'dark' ? '#c3c3c6' : '#4d4d59'}>
+                              #{globalRank}
                             </Text>
-                            {user.isAdmin && (
-                              <Badge colorScheme="purple" size="sm">관리자</Badge>
-                            )}
-                            {user.isVerified && (
-                              <Badge colorScheme="green" size="sm">인증</Badge>
-                            )}
-                          </HStack>
-                        </Td>
-                        <Td>
-                          <LevelBadge 
-                            level={currentLevel} 
-                            size="sm" 
-                            variant="solid"
-                            showIcon={true}
-                          />
-                        </Td>
-                        <Td>
-                          <Text fontSize="sm" color={colorMode === 'dark' ? '#c3c3c6' : '#4d4d59'}>
-                            {(user.totalExp || 0).toLocaleString()} EXP
-                          </Text>
-                        </Td>
-                        <Td>
-                          <VStack spacing={1} align="start">
-                            <Progress 
-                              value={Math.max(0, Math.min(100, progress))} 
+                          </Td>
+                          <Td>
+                            <HStack spacing={2}>
+                              <Text fontWeight="500" color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}>
+                                {user.name}
+                              </Text>
+                              {user.isAdmin && (
+                                <Badge colorScheme="purple" size="sm">관리자</Badge>
+                              )}
+                              {user.isVerified && (
+                                <Badge colorScheme="green" size="sm">인증</Badge>
+                              )}
+                            </HStack>
+                          </Td>
+                          <Td>
+                            <LevelBadge 
+                              level={currentLevel} 
                               size="sm" 
-                              w="80px"
-                              bg={colorMode === 'dark' ? '#4d4d59' : '#e2e8f0'}
-                              colorScheme={currentLevel >= 90 ? 'yellow' : 'blue'}
+                              variant="solid"
+                              showIcon={true}
                             />
-                            <Text fontSize="xs" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
-                              {Math.round(progress)}%
+                          </Td>
+                          <Td>
+                            <Text fontSize="sm" color={colorMode === 'dark' ? '#c3c3c6' : '#4d4d59'}>
+                              {(user.totalExp || 0).toLocaleString()} EXP
                             </Text>
-                          </VStack>
-                        </Td>
-                        <Td>
-                          <Text fontSize="sm" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
-                            {new Date(user.createdAt || Date.now()).toLocaleDateString('ko-KR')}
-                          </Text>
-                        </Td>
-                      </Tr>
-                    );
-                  })}
-              </Tbody>
-            </Table>
+                          </Td>
+                          <Td>
+                            <VStack spacing={1} align="start">
+                              <Text fontSize="xs" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
+                                글 {user.totalPosts}개 • 좋아요 {user.totalLikes}개
+                              </Text>
+                              <Text fontSize="xs" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
+                                댓글 {user.totalComments}개 • 북마크 {user.totalBookmarks}개
+                              </Text>
+                            </VStack>
+                          </Td>
+                          <Td>
+                            <Text fontSize="sm" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
+                              {new Date(user.createdAt || Date.now()).toLocaleDateString('ko-KR')}
+                            </Text>
+                          </Td>
+                        </Tr>
+                      );
+                    })}
+                  </Tbody>
+                </Table>
+                
+                {/* 페이지네이션 */}
+                {totalPages > 1 && (
+                  <HStack justify="center" spacing={2} mt={6}>
+                    <Button 
+                      size="sm" 
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      isDisabled={currentPage === 1}
+                    >
+                      이전
+                    </Button>
+                    
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                      <Button
+                        key={page}
+                        size="sm"
+                        variant={currentPage === page ? 'solid' : 'outline'}
+                        onClick={() => setCurrentPage(page)}
+                      >
+                        {page}
+                      </Button>
+                    ))}
+                    
+                    <Button 
+                      size="sm"
+                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      isDisabled={currentPage === totalPages}
+                    >
+                      다음
+                    </Button>
+                  </HStack>
+                )}
+              </>
+            )}
           </CardBody>
         </Card>
 
