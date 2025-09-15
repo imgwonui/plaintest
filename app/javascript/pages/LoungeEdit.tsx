@@ -32,7 +32,10 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { DeleteIcon } from '@chakra-ui/icons';
 import CustomSelect from '../components/CustomSelect';
 import WYSIWYGEditor from '../components/WYSIWYGEditor';
-import { sessionLoungeService } from '../services/sessionDataService';
+import { PostDetailSkeleton } from '../components/LoadingOptimizer';
+import { loungeService } from '../services/supabaseDataService';
+import { optimizedLoungeService } from '../services/optimizedDataService';
+import { cacheService } from '../services/cacheService';
 import { useAuth } from '../contexts/AuthContext';
 import { getTagById } from '../data/tags';
 
@@ -55,38 +58,61 @@ const LoungeEdit: React.FC = () => {
   const [newTagInput, setNewTagInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   // 포스트 로드 및 권한 확인
   useEffect(() => {
-    const foundPost = sessionLoungeService.getById(postId);
-    if (!foundPost) {
-      toast({
-        title: "글을 찾을 수 없습니다",
-        status: "error",
-        duration: 3000,
-      });
-      navigate('/lounge');
-      return;
-    }
+    const loadPost = async () => {
+      try {
+        setIsLoading(true);
+        
+        // Supabase에서 포스트 로드
+        const foundPost = await optimizedLoungeService.getById(postId);
+        if (!foundPost) {
+          toast({
+            title: "글을 찾을 수 없습니다",
+            status: "error",
+            duration: 3000,
+          });
+          navigate('/lounge');
+          return;
+        }
 
-    // 권한 확인: 본인 글이거나 관리자만 편집 가능
-    if (!user || (!isAdmin && foundPost.author !== user.name)) {
-      toast({
-        title: "권한이 없습니다",
-        description: "본인이 작성한 글만 수정할 수 있습니다",
-        status: "error",
-        duration: 3000,
-      });
-      navigate('/lounge');
-      return;
-    }
+        // 권한 확인: 본인 글이거나 관리자만 편집 가능
+        if (!user || (!isAdmin && foundPost.author_name !== user.name)) {
+          toast({
+            title: "권한이 없습니다",
+            description: "본인이 작성한 글만 수정할 수 있습니다",
+            status: "error",
+            duration: 3000,
+          });
+          navigate('/lounge');
+          return;
+        }
 
-    // 폼 데이터 설정
-    setPost(foundPost);
-    setTitle(foundPost.title);
-    setContent(foundPost.content);
-    setType(foundPost.type);
-    setSelectedTags(foundPost.tags || []);
+        // 폼 데이터 설정
+        setPost(foundPost);
+        setTitle(foundPost.title || '');
+        setContent(foundPost.content || '');
+        setType(foundPost.type || 'question');
+        setSelectedTags(foundPost.tags || []);
+        
+      } catch (error) {
+        console.error('포스트 로드 실패:', error);
+        toast({
+          title: "글을 불러오는 중 오류가 발생했습니다",
+          status: "error",
+          duration: 3000,
+        });
+        navigate('/lounge');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    if (postId && user) {
+      loadPost();
+    }
   }, [postId, user, isAdmin, navigate, toast]);
 
   // 기본 태그 목록
@@ -199,23 +225,27 @@ const LoungeEdit: React.FC = () => {
     setIsSubmitting(true);
     
     try {
-      // 라운지 포스트 수정
-      const updatedPost = sessionLoungeService.update(postId, {
+      // Supabase를 통한 라운지 포스트 수정
+      const success = await loungeService.update(postId, {
         title: title.trim(),
         content: content.trim(),
         type,
         tags: selectedTags
       });
       
-      console.log('라운지 포스트가 수정되었습니다:', updatedPost);
-      
-      toast({
-        title: "✨ 글이 성공적으로 수정되었습니다!",
-        status: "success",
-        duration: 3000,
-      });
-      
-      navigate(`/lounge/${postId}`);
+      if (success) {
+        console.log('라운지 포스트가 수정되었습니다:', postId);
+        
+        toast({
+          title: "✨ 글이 성공적으로 수정되었습니다!",
+          status: "success",
+          duration: 3000,
+        });
+        
+        navigate(`/lounge/${postId}`);
+      } else {
+        throw new Error('수정 실패');
+      }
       
     } catch (error) {
       console.error('글 수정 실패:', error);
@@ -233,9 +263,28 @@ const LoungeEdit: React.FC = () => {
     setIsDeleting(true);
     
     try {
-      const success = sessionLoungeService.delete(postId);
+      // Supabase를 통한 글 삭제
+      const success = await loungeService.delete(postId);
       
       if (success) {
+        console.log('🗑️ 라운지 포스트 삭제 완료, 캐시 무효화 시작:', postId);
+        
+        // 관련 캐시 무효화
+        cacheService.invalidatePost('lounge', postId);
+        
+        // 추가적으로 전체 라운지 목록 캐시도 무효화 (목록에서 제거되어야 함)
+        cacheService.deleteByPattern('lounge:*');
+        
+        // 사용자 프로필 캐시도 무효화 (작성한 글 목록에서 제거되어야 함)
+        if (user?.id) {
+          cacheService.invalidateUser(user.id);
+        }
+        
+        // 홈 페이지 캐시도 무효화 (라운지 최신 글이 변경될 수 있음)
+        cacheService.deleteByPattern('home:*');
+        
+        console.log('✅ 캐시 무효화 완료');
+        
         toast({
           title: "글이 삭제되었습니다",
           status: "success",
@@ -271,6 +320,15 @@ const LoungeEdit: React.FC = () => {
       default: return '';
     }
   };
+
+  // 로딩 중이거나 포스트가 없는 경우
+  if (isLoading) {
+    return (
+      <Container maxW="1400px" py={8}>
+        <PostDetailSkeleton />
+      </Container>
+    );
+  }
 
   if (!post) {
     return null;

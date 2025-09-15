@@ -40,7 +40,7 @@ import { storyService, loungeService, interactionService, userService } from '..
 import { formatDate } from '../utils/format';
 import LevelBadge from '../components/UserLevel/LevelBadge';
 import UserLevelIcon from '../components/UserLevel/UserLevelIcon';
-import { getUserDisplayLevel, userLevelService } from '../services/userLevelService';
+import { getDatabaseUserLevel, trackDatabaseUserActivity, databaseUserLevelService } from '../services/databaseUserLevelService';
 import { LevelUtils } from '../data/levelConfig';
 import dayjs from 'dayjs';
 
@@ -55,6 +55,7 @@ const Profile: React.FC = () => {
   const [userLoungePosts, setUserLoungePosts] = useState<any[]>([]);
   const [userBookmarks, setUserBookmarks] = useState<any[]>([]);
   const [userLikes, setUserLikes] = useState<any[]>([]);
+  const [userLevel, setUserLevel] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // 로그인하지 않은 사용자는 로그인 페이지로 리다이렉트
@@ -224,56 +225,39 @@ const Profile: React.FC = () => {
           loungeLikeCounts: updatedLoungePosts.map(p => ({ id: p.id, title: p.title?.substring(0, 20), likes: p.like_count }))
         });
         
-        // 사용자 활동 점수 계산 및 레벨 업데이트
-        const activityScore = (totalLikes * 2) + (myStories.length * 50) + (myLoungePosts.length * 3);
-        console.log(`📈 활동 점수 계산: 좋아요 ${totalLikes}×2 + Story ${myStories.length}×50 + Lounge ${myLoungePosts.length}×3 = ${activityScore}점`);
+        // 🆕 새로운 데이터베이스 기반 레벨 시스템
+        console.log(`🔄 사용자 ${user.name} (ID: ${user.id}) 데이터베이스 레벨 업데이트 시도...`);
         
-        // 레벨 업데이트 시도 (사용자 ID를 숫자로 변환)
         try {
-          const numericUserId = parseInt(user.id) || stringToHash(user.id);
-          console.log(`🔄 사용자 ${user.name} (ID: ${user.id} → ${numericUserId}) 레벨 업데이트 시도...`);
-          console.log(`📊 계산된 활동 점수: ${activityScore}점`);
+          // DB 기반 활동 업데이트 (실제 데이터 기반으로 레벨 재계산)
+          const updateResult = await trackDatabaseUserActivity(user.id);
           
-          // 현재 레벨 정보
-          const currentLevel = getUserDisplayLevel(numericUserId);
-          console.log(`📈 현재 레벨: LV${currentLevel.level}, 경험치: ${currentLevel.totalExp}`);
-          
-          // 직접 경험치 설정 (관리자 모드)
-          userLevelService.setUserExp(numericUserId, activityScore);
-          
-          // 업데이트 후 레벨 정보
-          const updatedLevel = getUserDisplayLevel(numericUserId);
-          console.log(`🎉 업데이트 후 레벨: LV${updatedLevel.level}, 경험치: ${updatedLevel.totalExp}`);
-          
-          if (updatedLevel.level > currentLevel.level) {
-            console.log(`🎊 레벨업! LV${currentLevel.level} → LV${updatedLevel.level}`);
+          if (updateResult.leveledUp) {
+            console.log(`🎊 레벨업! LV${updateResult.oldLevel} → LV${updateResult.newLevel}`);
+            toast({
+              title: "레벨업!",
+              description: `축하드립니다! LV${updateResult.oldLevel}에서 LV${updateResult.newLevel}로 레벨업했습니다!`,
+              status: "success",
+              duration: 5000,
+              isClosable: true
+            });
           }
           
-          // 🔥 세션 레벨을 데이터베이스에 동기화
-          try {
-            const syncResult = await userService.syncSessionLevelToDatabase(
-              user.id, 
-              updatedLevel.level, 
-              updatedLevel.totalExp,
-              {
-                totalLikes,
-                totalPosts: myStories.length + myLoungePosts.length,
-                totalComments: 0 // 댓글은 별도로 계산 필요시 추가
-              }
-            );
-            
-            if (syncResult) {
-              console.log(`✅ 세션 레벨이 데이터베이스에 동기화됨: ${user.name} LV${updatedLevel.level}`);
-            } else {
-              console.warn(`⚠️ 데이터베이스 동기화 실패: ${user.name}`);
-            }
-          } catch (syncError) {
-            console.error('데이터베이스 동기화 중 오류:', syncError);
-          }
+          // 업데이트된 레벨 정보 가져오기
+          const currentLevel = await getDatabaseUserLevel(user.id);
+          setUserLevel(currentLevel);
+          console.log('📊 현재 사용자 레벨:', currentLevel);
           
-          console.log('✅ 레벨 업데이트 완료');
+          console.log('✅ 데이터베이스 기반 레벨 업데이트 완료');
         } catch (levelError) {
-          console.warn('⚠️ 레벨 업데이트 실패:', levelError);
+          console.error('⚠️ 데이터베이스 레벨 업데이트 실패:', levelError);
+          // 실패시에도 기본 레벨 정보 설정
+          try {
+            const defaultLevel = await getDatabaseUserLevel(user.id);
+            setUserLevel(defaultLevel);
+          } catch {
+            setUserLevel({ level: 1, totalExp: 0, tier: 'Bronze', displayText: 'LV1' });
+          }
         }
         
         const stats = {
@@ -281,8 +265,7 @@ const Profile: React.FC = () => {
           loungePostsCount: updatedLoungePosts.length,
           totalLikes,
           bookmarksCount: myBookmarks.length,
-          joinedDays: Math.ceil((new Date().getTime() - new Date(user.created_at || Date.now()).getTime()) / (1000 * 60 * 60 * 24)),
-          activityScore
+          joinedDays: Math.ceil((new Date().getTime() - new Date(user.created_at || Date.now()).getTime()) / (1000 * 60 * 60 * 24))
         };
         
         setUserStats(stats);
@@ -310,6 +293,7 @@ const Profile: React.FC = () => {
         setUserLoungePosts([]);
         setUserBookmarks([]);
         setUserLikes([]);
+        setUserLevel({ level: 1, totalExp: 0, tier: 'Bronze', displayText: 'LV1' });
       } finally {
         setIsLoading(false);
       }
@@ -337,17 +321,6 @@ const Profile: React.FC = () => {
     }
   };
 
-  // 문자열을 숫자 해시로 변환하는 함수
-  const stringToHash = (str: string): number => {
-    let hash = 0;
-    if (str.length === 0) return hash;
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // 32bit 정수로 변환
-    }
-    return Math.abs(hash);
-  };
 
   const getProviderBadge = (provider: string) => {
     switch (provider) {
@@ -399,7 +372,7 @@ const Profile: React.FC = () => {
                       {user.name}
                     </Heading>
                     <LevelBadge 
-                      level={getUserDisplayLevel(parseInt(user.id) || stringToHash(user.id)).level} 
+                      level={userLevel?.level || 1} 
                       size="md" 
                       variant="solid"
                       showIcon={true}
@@ -466,7 +439,7 @@ const Profile: React.FC = () => {
                   활동 레벨
                 </Heading>
                 <LevelBadge 
-                  level={getUserDisplayLevel(parseInt(user.id) || stringToHash(user.id)).level} 
+                  level={userLevel?.level || 1} 
                   size="lg" 
                   variant="solid"
                   showIcon={true}
@@ -474,104 +447,87 @@ const Profile: React.FC = () => {
                 />
               </HStack>
               
-              {(() => {
-                // 사용자 ID를 숫자로 변환해서 레벨 정보 가져오기
-                const numericUserId = parseInt(user.id) || stringToHash(user.id);
-                const userLevel = getUserDisplayLevel(numericUserId);
-                const currentTier = LevelUtils.getLevelTier(userLevel.level);
-                const nextLevel = userLevel.level < 99 ? userLevel.level + 1 : userLevel.level;
-                const nextLevelExp = userLevel.level < 99 ? LevelUtils.getRequiredExpForLevel(nextLevel) : userLevel.totalExp;
-                const progressPercent = userLevel.level >= 99 ? 100 : ((userLevel.totalExp - LevelUtils.getRequiredExpForLevel(userLevel.level)) / (nextLevelExp - LevelUtils.getRequiredExpForLevel(userLevel.level))) * 100;
-                
-                return (
-                  <VStack spacing={4} align="stretch">
-                    {/* 레벨 진행률 */}
-                    <VStack spacing={2} align="stretch">
-                      <HStack justify="space-between">
-                        <Text fontSize="sm" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
-                          {userLevel.level < 99 ? `LV${userLevel.level} → LV${nextLevel}` : 'MAX LEVEL'}
-                        </Text>
-                        <Text fontSize="sm" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
-                          {userLevel.totalExp.toLocaleString()} EXP
-                        </Text>
-                      </HStack>
-                      
-                      <Box
-                        w="100%"
-                        h="12px"
-                        bg={colorMode === 'dark' ? '#2c2c35' : '#f7fafc'}
-                        borderRadius="full"
-                        overflow="hidden"
-                        border={colorMode === 'dark' ? '1px solid #4d4d59' : '1px solid #e2e8f0'}
-                      >
+              {userLevel ? (
+                (() => {
+                  const currentTier = LevelUtils.getLevelTier(userLevel.level);
+                  const nextLevel = userLevel.level < 99 ? userLevel.level + 1 : userLevel.level;
+                  const nextLevelExp = userLevel.level < 99 ? LevelUtils.getRequiredExpForLevel(nextLevel) : userLevel.totalExp;
+                  const progressPercent = userLevel.level >= 99 ? 100 : ((userLevel.totalExp - LevelUtils.getRequiredExpForLevel(userLevel.level)) / (nextLevelExp - LevelUtils.getRequiredExpForLevel(userLevel.level))) * 100;
+                  
+                  return (
+                    <VStack spacing={4} align="stretch">
+                      {/* 레벨 진행률 */}
+                      <VStack spacing={2} align="stretch">
+                        <HStack justify="space-between">
+                          <Text fontSize="sm" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
+                            {userLevel.level < 99 ? `LV${userLevel.level} → LV${nextLevel}` : 'MAX LEVEL'}
+                          </Text>
+                          <Text fontSize="sm" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
+                            {userLevel.totalExp.toLocaleString()} EXP
+                          </Text>
+                        </HStack>
+                        
                         <Box
-                          h="100%"
-                          w={`${Math.min(progressPercent, 100)}%`}
-                          bg={currentTier?.color || '#68D391'}
+                          w="100%"
+                          h="12px"
+                          bg={colorMode === 'dark' ? '#2c2c35' : '#f7fafc'}
                           borderRadius="full"
-                          transition="width 0.3s ease"
-                          boxShadow={userLevel.level >= 90 ? `0 0 8px ${currentTier?.color || '#FFD700'}` : undefined}
-                        />
-                      </Box>
-                      
-                      {userLevel.level < 99 && (
-                        <Text fontSize="xs" color={colorMode === 'dark' ? '#7e7e87' : '#9e9ea4'}>
-                          다음 레벨까지 {(nextLevelExp - userLevel.totalExp).toLocaleString()} EXP 필요
-                        </Text>
-                      )}
-                    </VStack>
-                    
-                    {/* 티어 정보 */}
-                    <HStack spacing={4} align="center">
-                      <UserLevelIcon 
-                        level={userLevel.level} 
-                        size="lg"
-                        showAnimation={userLevel.level >= 90}
-                      />
-                      <VStack spacing={1} align="start">
-                        <Text fontWeight="600" color={currentTier?.color || (colorMode === 'dark' ? '#e4e4e5' : '#2c2c35')}>
-                          {currentTier?.name || 'Unknown Tier'}
-                        </Text>
-                        <Text fontSize="sm" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
-                          {currentTier?.description || '레벨 정보를 불러올 수 없습니다'}
-                        </Text>
-                        {userLevel.level >= 90 && (
-                          <Badge colorScheme="yellow" size="sm" variant="solid">
-                            ✨ LEGEND
-                          </Badge>
+                          overflow="hidden"
+                          border={colorMode === 'dark' ? '1px solid #4d4d59' : '1px solid #e2e8f0'}
+                        >
+                          <Box
+                            h="100%"
+                            w={`${Math.min(progressPercent, 100)}%`}
+                            bg={currentTier?.color || '#68D391'}
+                            borderRadius="full"
+                            transition="width 0.3s ease"
+                            boxShadow={userLevel.level >= 90 ? `0 0 8px ${currentTier?.color || '#FFD700'}` : undefined}
+                          />
+                        </Box>
+                        
+                        {userLevel.level < 99 && (
+                          <Text fontSize="xs" color={colorMode === 'dark' ? '#7e7e87' : '#9e9ea4'}>
+                            다음 레벨까지 {(nextLevelExp - userLevel.totalExp).toLocaleString()} EXP 필요
+                          </Text>
                         )}
                       </VStack>
-                    </HStack>
-                    
-                    {/* 활동 점수 내역 */}
-                    <Box>
-                      <Text fontSize="sm" fontWeight="600" color={colorMode === 'dark' ? '#c3c3c6' : '#4d4d59'} mb={3}>
-                        점수 획득 내역
+                      
+                      {/* 티어 정보 */}
+                      <HStack spacing={4} align="center">
+                        <UserLevelIcon 
+                          level={userLevel.level} 
+                          size="lg"
+                          showAnimation={userLevel.level >= 90}
+                        />
+                        <VStack spacing={1} align="start">
+                          <Text fontWeight="600" color={currentTier?.color || (colorMode === 'dark' ? '#e4e4e5' : '#2c2c35')}>
+                            {currentTier?.name || userLevel.tier}
+                          </Text>
+                          <Text fontSize="sm" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
+                            {currentTier?.description || '데이터베이스 기반 레벨 시스템'}
+                          </Text>
+                          {userLevel.level >= 90 && (
+                            <Badge colorScheme="yellow" size="sm" variant="solid">
+                              ✨ LEGEND
+                            </Badge>
+                          )}
+                        </VStack>
+                      </HStack>
+                      
+                      {/* 현재는 통계를 간소화하여 표시 */}
+                      <Text fontSize="sm" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'} textAlign="center">
+                        💾 데이터베이스 기반으로 계산된 정확한 레벨입니다
                       </Text>
-                      <SimpleGrid columns={{ base: 2, md: 3 }} spacing={3}>
-                        <VStack spacing={1} align="center" p={3} bg={colorMode === 'dark' ? '#2c2c35' : '#f8f9fa'} borderRadius="md">
-                          <Text fontSize="xs" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>받은 좋아요</Text>
-                          <Text fontSize="sm" fontWeight="600" color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}>
-                            {userStats.totalLikes} × 2 = {userStats.totalLikes * 2}점
-                          </Text>
-                        </VStack>
-                        <VStack spacing={1} align="center" p={3} bg={colorMode === 'dark' ? '#2c2c35' : '#f8f9fa'} borderRadius="md">
-                          <Text fontSize="xs" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>Story 승격</Text>
-                          <Text fontSize="sm" fontWeight="600" color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}>
-                            {userStats.storiesCount} × 50 = {userStats.storiesCount * 50}점
-                          </Text>
-                        </VStack>
-                        <VStack spacing={1} align="center" p={3} bg={colorMode === 'dark' ? '#2c2c35' : '#f8f9fa'} borderRadius="md">
-                          <Text fontSize="xs" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>글 작성</Text>
-                          <Text fontSize="sm" fontWeight="600" color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}>
-                            {userStats.loungePostsCount} × 3 = {userStats.loungePostsCount * 3}점
-                          </Text>
-                        </VStack>
-                      </SimpleGrid>
-                    </Box>
-                  </VStack>
-                );
-              })()}
+                    </VStack>
+                  );
+                })()
+              ) : (
+                <VStack spacing={4} align="center" py={8}>
+                  <Text color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
+                    레벨 정보를 불러오는 중...
+                  </Text>
+                </VStack>
+              )}
             </VStack>
           </CardBody>
         </Card>

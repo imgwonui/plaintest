@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Modal,
   ModalOverlay,
@@ -33,13 +33,23 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [hotSearchTerms, setHotSearchTerms] = useState<any[]>([]);
+  const [debouncedQuery, setDebouncedQuery] = useState('');
 
-  // 모달이 열릴 때 Supabase 데이터 로드
+  // 검색어 디바운싱 (300ms 지연)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // 모달이 열릴 때 데이터 로드
   useEffect(() => {
     if (isOpen) {
       const loadSearchData = async () => {
         try {
-          // 인기 검색어 로드
+          // 인기 검색어 로드 (전역 데이터)
           const topKeywords = await searchService.getTopKeywords(5);
           const formattedKeywords = topKeywords.map((item, index) => ({
             term: item.keyword,
@@ -49,9 +59,9 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose }) => {
           }));
           setHotSearchTerms(formattedKeywords);
           
-          // 최근 검색어 로드
-          const recentKeywords = await searchService.getRecentKeywords(8);
-          setSearchHistory(recentKeywords.map(item => item.keyword));
+          // 최근 검색어 로드 (세션스토리지 기반)
+          const recentSearches = getRecentSearchesFromSession();
+          setSearchHistory(recentSearches);
         } catch (error) {
           console.error('❌ 검색 데이터 로드 실패:', error);
           setHotSearchTerms([]);
@@ -63,8 +73,57 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose }) => {
     }
   }, [isOpen]);
 
+  // 세션스토리지에서 최근 검색어 가져오기
+  const getRecentSearchesFromSession = (): string[] => {
+    try {
+      const saved = sessionStorage.getItem('recentSearches');
+      return saved ? JSON.parse(saved) : [];
+    } catch (error) {
+      console.error('세션스토리지에서 검색어 로드 실패:', error);
+      return [];
+    }
+  };
+
+  // 세션스토리지에 최근 검색어 저장하기
+  const saveRecentSearchToSession = (query: string) => {
+    try {
+      const current = getRecentSearchesFromSession();
+      // 중복 제거 후 맨 앞에 추가
+      const updated = [query, ...current.filter(item => item !== query)].slice(0, 8);
+      sessionStorage.setItem('recentSearches', JSON.stringify(updated));
+      setSearchHistory(updated);
+    } catch (error) {
+      console.error('세션스토리지에 검색어 저장 실패:', error);
+    }
+  };
+
+  // 세션스토리지에서 검색어 제거하기
+  const removeRecentSearchFromSession = (indexToRemove: number) => {
+    try {
+      const current = getRecentSearchesFromSession();
+      const updated = current.filter((_, index) => index !== indexToRemove);
+      sessionStorage.setItem('recentSearches', JSON.stringify(updated));
+      setSearchHistory(updated);
+    } catch (error) {
+      console.error('세션스토리지에서 검색어 제거 실패:', error);
+    }
+  };
+
+  // 세션스토리지에서 모든 검색어 삭제하기
+  const clearAllRecentSearches = () => {
+    try {
+      sessionStorage.removeItem('recentSearches');
+      setSearchHistory([]);
+    } catch (error) {
+      console.error('세션스토리지 검색어 전체 삭제 실패:', error);
+    }
+  };
+
   const handleSearch = (query: string) => {
     if (query.trim()) {
+      // 세션스토리지에 최근 검색어 저장
+      saveRecentSearchToSession(query.trim());
+      
       // 검색 결과 페이지로 이동 (검색어 추가는 searchService.search()에서 자동 처리됨)
       navigate(`/search?q=${encodeURIComponent(query.trim())}`);
       onClose();
@@ -199,10 +258,7 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose }) => {
                     color="gray.400"
                     cursor="pointer"
                     _hover={{ color: 'gray.300' }}
-                    onClick={() => {
-                      // UI에서만 검색어 제거 (Supabase에서는 영구 삭제 기능 없음)
-                      setSearchHistory([]);
-                    }}
+                    onClick={clearAllRecentSearches}
                   >
                     모두 지우기
                   </Text>
@@ -237,8 +293,7 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose }) => {
                         variant="ghost"
                         onClick={(e) => {
                           e.stopPropagation();
-                          // UI에서만 검색어 제거 (Supabase에서는 영구 삭제 기능 없음)
-                          setSearchHistory(prev => prev.filter((_, i) => i !== index));
+                          removeRecentSearchFromSession(index);
                         }}
                       />
                     </HStack>

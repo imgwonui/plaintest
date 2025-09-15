@@ -39,10 +39,41 @@ const theme = extendTheme({
   },
   styles: {
     global: (props: any) => ({
+      html: {
+        overflowX: 'hidden',
+        overflowY: 'auto',
+      },
       body: {
         bg: props.colorMode === 'dark' ? 'gray.800' : 'white',
         color: props.colorMode === 'dark' ? 'gray.50' : 'gray.700',
         lineHeight: '1.6',
+        overflowX: 'hidden',
+        overflowY: 'auto',
+      },
+      // 스크롤바 스타일링
+      '*': {
+        scrollbarWidth: 'thin',
+        scrollbarColor: props.colorMode === 'dark' 
+          ? '#4d4d59 #2c2c35' 
+          : '#c3c3c6 #f5f5f5',
+      },
+      '*::-webkit-scrollbar': {
+        width: '8px',
+        height: '8px',
+      },
+      '*::-webkit-scrollbar-track': {
+        bg: props.colorMode === 'dark' ? 'gray.700' : 'gray.50',
+        borderRadius: '4px',
+      },
+      '*::-webkit-scrollbar-thumb': {
+        bg: props.colorMode === 'dark' ? 'gray.500' : 'gray.300',
+        borderRadius: '4px',
+        _hover: {
+          bg: props.colorMode === 'dark' ? 'gray.400' : 'gray.400',
+        },
+      },
+      '*::-webkit-scrollbar-thumb:hover': {
+        bg: props.colorMode === 'dark' ? 'gray.400' : 'gray.400',
       },
     }),
   },

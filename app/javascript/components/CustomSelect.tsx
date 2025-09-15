@@ -8,6 +8,7 @@ import {
   useOutsideClick,
 } from '@chakra-ui/react';
 import { ChevronDownIcon } from '@chakra-ui/icons';
+import { Z_INDEX_LAYERS } from '../utils/zIndexLayers';
 
 interface Option {
   value: string;
@@ -131,7 +132,7 @@ const CustomSelect: React.FC<CustomSelectProps> = ({
           border={colorMode === 'dark' ? '1px solid #4d4d59' : '1px solid #e4e4e5'}
           borderRadius="md"
           boxShadow="lg"
-          zIndex={1000}
+          zIndex={Z_INDEX_LAYERS.DROPDOWN}
           overflow="hidden"
         >
           <VStack spacing={0} align="stretch">

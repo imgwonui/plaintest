@@ -48,16 +48,25 @@ const SearchResults: React.FC = () => {
 
     try {
       setIsLoading(true);
-      console.log('🔍 Supabase 검색 실행:', searchQuery);
+      console.log('🔍 Supabase 통합 검색 실행:', searchQuery);
       
       const results = await searchService.search(searchQuery.trim());
-      console.log('✅ 검색 결과:', results);
+      console.log('✅ 통합 검색 결과:', results);
       
-      setSearchResults({
-        stories: results.stories || [],
-        loungePosts: results.loungePosts || [],
+      // 검색 결과 구조 정규화
+      const normalizedResults = {
+        stories: Array.isArray(results.stories) ? results.stories : [],
+        loungePosts: Array.isArray(results.loungePosts) ? results.loungePosts : [],
         total: results.totalResults || 0
+      };
+
+      console.log('📊 정규화된 검색 결과:', {
+        stories: normalizedResults.stories.length,
+        loungePosts: normalizedResults.loungePosts.length,
+        total: normalizedResults.total
       });
+      
+      setSearchResults(normalizedResults);
       
     } catch (error) {
       console.error('❌ 검색 실패:', error);
@@ -222,20 +231,37 @@ const SearchResults: React.FC = () => {
                           </HStack>
                           <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={6}>
                             {searchResults.stories.slice(0, 6).map((story) => (
-                              <Card
-                                key={story.id}
-                                type="story"
-                                id={story.id}
-                                title={story.title}
-                                summary={story.summary}
-                                imageUrl={story.image_url}
-                                tags={story.tags}
-                                createdAt={story.created_at}
-                                readTime={story.read_time}
-                                author={story.author_name}
-                                authorId={story.author_id}
-                                authorVerified={story.author_verified}
-                              />
+                              <Box key={story.id} position="relative">
+                                <Card
+                                  type="story"
+                                  id={story.id}
+                                  title={story.title}
+                                  summary={story.summary}
+                                  imageUrl={story.image_url}
+                                  tags={story.tags}
+                                  createdAt={story.created_at}
+                                  readTime={story.read_time}
+                                  author={story.author_name}
+                                  authorId={story.author_id}
+                                  authorVerified={story.author_verified}
+                                />
+                                {story.match_type === 'comment' && story.matched_comment && (
+                                  <Box 
+                                    position="absolute" 
+                                    top={2} 
+                                    right={2}
+                                    zIndex={10}
+                                  >
+                                    <Badge 
+                                      colorScheme="orange" 
+                                      size="sm" 
+                                      title={`댓글 매칭: ${story.matched_comment.content.slice(0, 50)}...`}
+                                    >
+                                      댓글 매칭
+                                    </Badge>
+                                  </Box>
+                                )}
+                              </Box>
                             ))}
                           </SimpleGrid>
                         </VStack>
@@ -260,23 +286,40 @@ const SearchResults: React.FC = () => {
                           </HStack>
                           <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={6}>
                             {searchResults.loungePosts.slice(0, 6).map((post) => (
-                              <Card
-                                key={post.id}
-                                type="lounge"
-                                id={post.id}
-                                title={post.title}
-                                summary={post.content}
-                                tags={post.tags}
-                                createdAt={post.created_at}
-                                loungeType={post.type}
-                                isExcellent={post.is_excellent}
-                                likeCount={post.like_count}
-                                commentCount={post.comment_count}
-                                scrapCount={post.scrap_count}
-                                author={post.author_name}
-                                authorId={post.author_id}
-                                authorVerified={post.author_verified}
-                              />
+                              <Box key={post.id} position="relative">
+                                <Card
+                                  type="lounge"
+                                  id={post.id}
+                                  title={post.title}
+                                  summary={post.content}
+                                  tags={post.tags}
+                                  createdAt={post.created_at}
+                                  loungeType={post.type}
+                                  isExcellent={post.is_excellent}
+                                  likeCount={post.like_count}
+                                  commentCount={post.comment_count}
+                                  scrapCount={post.scrap_count}
+                                  author={post.author_name}
+                                  authorId={post.author_id}
+                                  authorVerified={post.author_verified}
+                                />
+                                {post.match_type === 'comment' && post.matched_comment && (
+                                  <Box 
+                                    position="absolute" 
+                                    top={2} 
+                                    right={2}
+                                    zIndex={10}
+                                  >
+                                    <Badge 
+                                      colorScheme="orange" 
+                                      size="sm" 
+                                      title={`댓글 매칭: ${post.matched_comment.content.slice(0, 50)}...`}
+                                    >
+                                      댓글 매칭
+                                    </Badge>
+                                  </Box>
+                                )}
+                              </Box>
                             ))}
                           </SimpleGrid>
                         </VStack>

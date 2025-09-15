@@ -37,6 +37,7 @@ import {
   Type,
   Palette,
 } from 'lucide-react';
+import { compressImage, isImageFile, needsCompression } from '../utils/imageCompressor';
 
 // Quill 에디터 커스텀 스타일 (기본 CSS 포함)
 const customQuillStyles = `
@@ -94,6 +95,7 @@ const customQuillStyles = `
     outline: none !important;
     box-shadow: none !important;
     padding: 16px !important;
+    position: relative !important;
   }
   
   /* 에디터 컨테이너 완전 초기화 */
@@ -201,6 +203,14 @@ const customQuillStyles = `
   .ql-editor.ql-blank::before {
     font-style: normal;
     color: #9e9ea4;
+    position: absolute;
+    pointer-events: none;
+    top: 0;
+    left: 0;
+    z-index: 1;
+    padding: 16px;
+    margin: 0;
+    transform: none;
   }
   
   /* 다크모드 호환성 */
@@ -249,6 +259,153 @@ const customQuillStyles = `
     background-color: #e9d5ff !important;
     color: #1f2937 !important;
   }
+
+  /* 다크모드에서 형광펜 텍스트 색상 조정 */
+  [data-theme='dark'] .ql-editor span[style*="background-color: rgb(254, 240, 138)"],
+  [data-theme='dark'] .ql-editor span[style*="background-color: #fef08a"] {
+    color: #1f2937 !important; /* 노란색 배경에는 어두운 텍스트가 더 잘 보임 */
+  }
+  
+  [data-theme='dark'] .ql-editor span[style*="background-color: rgb(187, 247, 208)"],
+  [data-theme='dark'] .ql-editor span[style*="background-color: #bbf7d0"] {
+    color: #1f2937 !important; /* 초록색 배경에는 어두운 텍스트가 더 잘 보임 */
+  }
+  
+  [data-theme='dark'] .ql-editor span[style*="background-color: rgb(191, 219, 254)"],
+  [data-theme='dark'] .ql-editor span[style*="background-color: #bfdbfe"] {
+    color: #1f2937 !important; /* 파란색 배경에는 어두운 텍스트가 더 잘 보임 */
+  }
+  
+  [data-theme='dark'] .ql-editor span[style*="background-color: rgb(252, 231, 243)"],
+  [data-theme='dark'] .ql-editor span[style*="background-color: #fce7f3"] {
+    color: #1f2937 !important; /* 핑크색 배경에는 어두운 텍스트가 더 잘 보임 */
+  }
+  
+  [data-theme='dark'] .ql-editor span[style*="background-color: rgb(233, 213, 255)"],
+  [data-theme='dark'] .ql-editor span[style*="background-color: #e9d5ff"] {
+    color: #1f2937 !important; /* 보라색 배경에는 어두운 텍스트가 더 잘 보임 */
+  }
+
+  /* Sticky 툴바 지원을 위한 스타일 */
+  .wysiwyg-editor-container {
+    position: relative;
+    overflow: visible;
+  }
+
+  .wysiwyg-sticky-toolbar {
+    position: sticky !important;
+    top: 10px !important;
+    z-index: 1000 !important;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    transition: all 0.2s ease;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  [data-theme="dark"] .wysiwyg-sticky-toolbar {
+    background: rgba(44, 44, 53, 0.95);
+  }
+
+  .wysiwyg-sticky-toolbar.scrolled {
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    background: rgba(255, 255, 255, 0.98);
+    transform: translateY(0);
+  }
+
+  [data-theme="dark"] .wysiwyg-sticky-toolbar.scrolled {
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    background: rgba(44, 44, 53, 0.98);
+  }
+
+  /* 모바일에서 툴바 최적화 */
+  @media (max-width: 768px) {
+    .wysiwyg-sticky-toolbar {
+      position: sticky !important;
+      top: 5px !important;
+      margin: 0 -16px 8px -16px;
+      border-radius: 0;
+      padding-left: 16px;
+      padding-right: 16px;
+    }
+  }
+
+  /* 데스크톱에서 더 나은 가시성 보장 */
+  @media (min-width: 769px) {
+    .wysiwyg-sticky-toolbar {
+      position: sticky !important;
+      top: 15px !important;
+      z-index: 1000 !important;
+    }
+  }
+
+  /* 긴 문서에서 에디터 성능 최적화 */
+  .ql-editor {
+    will-change: scroll-position;
+    contain: layout style paint;
+  }
+
+  /* 유튜브 임베드 스타일 */
+  .youtube-embed-container {
+    position: relative;
+    padding-bottom: 56.25%;
+    height: 0;
+    margin: 16px 0;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+
+  .youtube-embed-container iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+  }
+
+  /* 다크모드에서 유튜브 임베드 */
+  [data-theme="dark"] .youtube-embed-container {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+
+  /* 링크 스타일 개선 */
+  .ql-editor a {
+    color: #7A5AF8;
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: all 0.2s ease;
+  }
+
+  .ql-editor a:hover {
+    border-bottom-color: #7A5AF8;
+    color: #5A3CD8;
+  }
+
+  [data-theme="dark"] .ql-editor a {
+    color: #A78BFA;
+  }
+
+  [data-theme="dark"] .ql-editor a:hover {
+    border-bottom-color: #A78BFA;
+    color: #C4B5FD;
+  }
+
+  /* Quill 클립보드 div 숨김/제거 */
+  .ql-clipboard {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    position: absolute !important;
+    left: -9999px !important;
+    top: -9999px !important;
+    width: 0 !important;
+    height: 0 !important;
+    pointer-events: none !important;
+  }
 `;
 
 interface WYSIWYGEditorProps {
@@ -267,6 +424,8 @@ const WYSIWYGEditor: React.FC<WYSIWYGEditorProps> = ({
   const { colorMode } = useColorMode();
   const toast = useToast();
   const quillRef = useRef<ReactQuill>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const [isToolbarScrolled, setIsToolbarScrolled] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { isOpen: isLinkOpen, onOpen: onLinkOpen, onClose: onLinkClose } = useDisclosure();
   const { isOpen: isColorOpen, onOpen: onColorOpen, onClose: onColorClose } = useDisclosure();
@@ -310,35 +469,137 @@ const WYSIWYGEditor: React.FC<WYSIWYGEditorProps> = ({
     }
   };
 
-  // 형광펜 적용
+  // 형광펜 적용/토글
   const applyHighlight = (color: string) => {
     if (quillRef.current) {
       const editor = quillRef.current.getEditor();
       const range = editor.getSelection();
       if (range && range.length > 0) {
-        const className = `highlight-${color}`;
-        editor.formatText(range.index, range.length, 'background', false);
+        // 현재 선택된 영역의 서식 확인
+        const format = editor.getFormat(range.index, range.length);
+        const currentBackground = format.background;
         
-        // CSS 클래스 적용을 위한 커스텀 처리
-        setTimeout(() => {
-          const selectedText = editor.getText(range.index, range.length);
-          const colorMap: Record<string, string> = {
-            yellow: '#fef08a',
-            green: '#bbf7d0',
-            blue: '#bfdbfe',
-            pink: '#fce7f3',
-            purple: '#e9d5ff'
-          };
-          
-          editor.formatText(range.index, range.length, 'background', colorMap[color]);
-          focusEditor();
-        }, 0);
+        const colorMap: Record<string, string> = {
+          yellow: '#fef08a',
+          green: '#bbf7d0',
+          blue: '#bfdbfe',
+          pink: '#fce7f3',
+          purple: '#e9d5ff'
+        };
+        
+        const targetColor = colorMap[color];
+        
+        // 이미 같은 색상의 형광펜이 적용되어 있는지 확인
+        if (currentBackground === targetColor) {
+          // 형광펜 제거 (토글)
+          editor.formatText(range.index, range.length, 'background', false);
+          toast({
+            title: "형광펜을 제거했습니다",
+            status: "success",
+            duration: 1500,
+          });
+        } else {
+          // 형광펜 적용
+          editor.formatText(range.index, range.length, 'background', targetColor);
+          toast({
+            title: "형광펜을 적용했습니다",
+            status: "success",
+            duration: 1500,
+          });
+        }
+        
+        focusEditor();
       } else {
         toast({
           title: "텍스트를 선택해주세요",
           description: "형광펜을 적용할 텍스트를 먼저 선택해주세요",
           status: "info",
           duration: 2000,
+        });
+      }
+    }
+  };
+
+  // 유튜브 링크 감지 함수
+  const isYouTubeLink = (url: string): boolean => {
+    const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+/i;
+    return youtubeRegex.test(url);
+  };
+
+  // 유튜브 비디오 ID 추출 (개선된 버전)
+  const extractYouTubeVideoId = (url: string): string | null => {
+    const patterns = [
+      // youtu.be/VIDEO_ID
+      /(?:youtu\.be\/)([a-zA-Z0-9_-]{11})/,
+      // youtube.com/watch?v=VIDEO_ID
+      /(?:youtube\.com.*[?&]v=)([a-zA-Z0-9_-]{11})/,
+      // youtube.com/embed/VIDEO_ID
+      /(?:youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
+      // youtube.com/v/VIDEO_ID
+      /(?:youtube\.com\/v\/)([a-zA-Z0-9_-]{11})/
+    ];
+
+    for (const pattern of patterns) {
+      const match = url.match(pattern);
+      if (match && match[1]) {
+        return match[1];
+      }
+    }
+    
+    return null;
+  };
+
+  // 유튜브 임베드 처리 (개선된 버전)
+  const handleYouTubeEmbed = (url: string, insertIndex: number) => {
+    const videoId = extractYouTubeVideoId(url);
+    if (!videoId) {
+      toast({
+        title: "유튜브 동영상 ID를 찾을 수 없습니다",
+        description: "올바른 유튜브 URL인지 확인해주세요",
+        status: "warning",
+        duration: 3000,
+      });
+      return;
+    }
+
+    if (quillRef.current) {
+      const editor = quillRef.current.getEditor();
+      
+      try {
+        // 유튜브 임베드 HTML 생성 (더 안전한 속성들 포함)
+        const embedHtml = `
+          <div class="youtube-embed-container" style="position: relative; padding-bottom: 56.25%; height: 0; margin: 16px 0; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);">
+            <iframe 
+              src="https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1&showinfo=0" 
+              style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none;"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowfullscreen
+              loading="lazy">
+            </iframe>
+          </div>
+          <p><br></p>
+        `;
+        
+        // 현재 위치에 줄바꿈 추가
+        editor.insertText(insertIndex, '\n\n');
+        
+        // 임베드 HTML 삽입
+        const delta = editor.clipboard.convert(embedHtml);
+        editor.updateContents(delta, 'user');
+        
+        // 커서를 임베드 뒤로 이동
+        setTimeout(() => {
+          const newLength = editor.getLength();
+          editor.setSelection(newLength, 0);
+        }, 100);
+        
+      } catch (error) {
+        console.error('유튜브 임베드 실패:', error);
+        toast({
+          title: "유튜브 임베드 실패",
+          description: "동영상 임베드 중 오류가 발생했습니다",
+          status: "error",
+          duration: 3000,
         });
       }
     }
@@ -376,13 +637,33 @@ const WYSIWYGEditor: React.FC<WYSIWYGEditorProps> = ({
     }
   };
 
-  // 링크 삽입
+  // 링크 삽입 (개선된 버전)
   const handleLinkInsert = () => {
-    if (!linkText.trim() || !linkUrl.trim()) {
+    if (!linkUrl.trim()) {
       toast({
-        title: "링크 정보를 모두 입력해주세요",
+        title: "URL을 입력해주세요",
         status: "warning",
         duration: 2000,
+      });
+      return;
+    }
+
+    // URL 형식 검증 및 정규화
+    let validUrl = linkUrl.trim();
+    try {
+      // 프로토콜이 없는 경우 추가
+      if (!validUrl.startsWith('http://') && !validUrl.startsWith('https://')) {
+        validUrl = 'https://' + validUrl;
+      }
+      
+      // URL 유효성 검사
+      new URL(validUrl);
+    } catch (error) {
+      toast({
+        title: "올바른 URL 형식을 입력해주세요",
+        description: "예: https://example.com",
+        status: "error",
+        duration: 3000,
       });
       return;
     }
@@ -390,8 +671,25 @@ const WYSIWYGEditor: React.FC<WYSIWYGEditorProps> = ({
     if (quillRef.current) {
       const editor = quillRef.current.getEditor();
       const range = editor.getSelection();
+      
       if (range) {
-        editor.insertText(range.index, linkText, 'link', linkUrl);
+        const displayText = linkText.trim() || validUrl;
+        
+        // 현재 위치에 링크 삽입
+        editor.insertText(range.index, displayText);
+        editor.formatText(range.index, displayText.length, 'link', validUrl);
+        
+        // 커서를 링크 뒤로 이동
+        const newPosition = range.index + displayText.length;
+        editor.setSelection(newPosition, 0);
+        
+        // 유튜브 링크 감지 및 자동 임베드
+        if (isYouTubeLink(validUrl)) {
+          // 약간의 지연 후 임베드 처리
+          setTimeout(() => {
+            handleYouTubeEmbed(validUrl, newPosition);
+          }, 100);
+        }
       }
     }
     
@@ -399,21 +697,19 @@ const WYSIWYGEditor: React.FC<WYSIWYGEditorProps> = ({
     setLinkUrl('');
     onLinkClose();
     focusEditor();
+    
+    const isYouTube = isYouTubeLink(validUrl);
+    toast({
+      title: isYouTube ? "유튜브 동영상이 임베드되었습니다!" : "링크가 삽입되었습니다",
+      status: "success",
+      duration: 2000,
+    });
   };
 
-  // 이미지 업로드 공통 함수
-  const insertImage = (file: File) => {
-    if (file.size > 10 * 1024 * 1024) {
-      toast({
-        title: "파일 크기가 너무 큽니다",
-        description: "10MB 이하의 이미지를 선택해주세요",
-        status: "error",
-        duration: 3000,
-      });
-      return;
-    }
-
-    if (!file.type.startsWith('image/')) {
+  // 이미지 업로드 공통 함수 (압축 포함)
+  const insertImage = async (file: File) => {
+    // 이미지 파일 검증
+    if (!isImageFile(file)) {
       toast({
         title: "이미지 파일만 업로드할 수 있습니다",
         status: "error",
@@ -422,34 +718,55 @@ const WYSIWYGEditor: React.FC<WYSIWYGEditorProps> = ({
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const imageUrl = e.target?.result as string;
-      
-      if (quillRef.current) {
-        const editor = quillRef.current.getEditor();
-        const range = editor.getSelection() || { index: 0, length: 0 };
-        editor.insertEmbed(range.index, 'image', imageUrl);
-        
-        // 커서를 이미지 다음 위치로 이동
-        editor.setSelection(range.index + 1);
+    try {
+      let finalFile = file;
+
+      // 5MB 이상인 경우 자동 압축 (사용자에게 알리지 않음)
+      if (needsCompression(file, 5)) {
+        const compressionResult = await compressImage(file, {
+          maxSizeMB: 5,
+          maxWidth: 1200, // 에디터용은 좀 더 작게
+          maxHeight: 800,
+          quality: 0.85
+        });
+
+        finalFile = compressionResult.compressedFile;
       }
 
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const imageUrl = e.target?.result as string;
+        
+        if (quillRef.current) {
+          const editor = quillRef.current.getEditor();
+          const range = editor.getSelection() || { index: 0, length: 0 };
+          editor.insertEmbed(range.index, 'image', imageUrl);
+          
+          // 커서를 이미지 다음 위치로 이동
+          editor.setSelection(range.index + 1);
+        }
+
+        // 이미지 삽입 완료 (조용히)
+      };
+      reader.readAsDataURL(finalFile);
+
+    } catch (error) {
+      console.error('이미지 처리 실패:', error);
       toast({
-        title: "이미지가 삽입되었습니다",
-        status: "success",
-        duration: 2000,
+        title: "이미지 처리 실패",
+        description: "이미지를 처리하는 중 오류가 발생했습니다.",
+        status: "error",
+        duration: 3000,
       });
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
   // 파일 입력을 통한 이미지 업로드
-  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    insertImage(file);
+    await insertImage(file);
     event.target.value = '';
   };
 
@@ -469,12 +786,12 @@ const WYSIWYGEditor: React.FC<WYSIWYGEditorProps> = ({
     e.stopPropagation();
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     
     const files = Array.from(e.dataTransfer.files);
-    const imageFiles = files.filter(file => file.type.startsWith('image/'));
+    const imageFiles = files.filter(file => isImageFile(file));
     
     if (imageFiles.length === 0) {
       toast({
@@ -486,7 +803,7 @@ const WYSIWYGEditor: React.FC<WYSIWYGEditorProps> = ({
     }
     
     // 첫 번째 이미지만 삽입
-    insertImage(imageFiles[0]);
+    await insertImage(imageFiles[0]);
   };
 
   // 안전한 이미지 이벤트 핸들링
@@ -636,17 +953,75 @@ const WYSIWYGEditor: React.FC<WYSIWYGEditorProps> = ({
     };
   }, [toast]);
 
+  // 스크롤 감지 및 툴바 스타일 업데이트
+  useEffect(() => {
+    const handleScroll = () => {
+      if (toolbarRef.current) {
+        const rect = toolbarRef.current.getBoundingClientRect();
+        const isStuck = rect.top <= 0;
+        setIsToolbarScrolled(isStuck);
+      }
+    };
+
+    const observeToolbar = () => {
+      const observer = new IntersectionObserver(
+        ([entry]) => {
+          // 툴바가 상단에서 10px 이상 벗어나면 스크롤된 상태로 간주
+          const isStuck = entry.boundingClientRect.top <= 15;
+          setIsToolbarScrolled(isStuck);
+        },
+        { 
+          threshold: [0, 0.1, 0.9, 1], 
+          rootMargin: '-15px 0px 0px 0px' 
+        }
+      );
+
+      if (toolbarRef.current) {
+        observer.observe(toolbarRef.current);
+      }
+
+      return () => {
+        observer.disconnect();
+      };
+    };
+
+    // Intersection Observer 사용 (더 정확함)
+    const cleanup = observeToolbar();
+
+    // 스크롤 이벤트도 백업으로 사용
+    window.addEventListener('scroll', handleScroll, { passive: true });
+
+    return () => {
+      cleanup();
+      window.removeEventListener('scroll', handleScroll);
+    };
+  }, []);
+
   return (
-    <VStack spacing={3} align="stretch" w="100%">
+    <VStack spacing={3} align="stretch" w="100%" className="wysiwyg-editor-container">
       {/* 스타일 주입 */}
       <style dangerouslySetInnerHTML={{ __html: customQuillStyles }} />
       
       {/* 커스텀 툴바 */}
       <Box
+        ref={toolbarRef}
         p={4}
-        bg={colorMode === 'dark' ? '#2c2c35' : '#f8f9fa'}
+        bg={isToolbarScrolled 
+          ? (colorMode === 'dark' ? 'rgba(44, 44, 53, 0.98)' : 'rgba(248, 249, 250, 0.98)')
+          : (colorMode === 'dark' ? '#2c2c35' : '#f8f9fa')
+        }
         borderRadius="md"
         border={colorMode === 'dark' ? '1px solid #4d4d59' : '1px solid #e4e4e5'}
+        position="sticky"
+        top={{ base: "5px", md: "15px" }}
+        zIndex={1000}
+        backdropFilter="blur(10px)"
+        boxShadow={isToolbarScrolled 
+          ? (colorMode === 'dark' ? '0 2px 10px rgba(0,0,0,0.3)' : '0 2px 10px rgba(0,0,0,0.1)')
+          : 'none'
+        }
+        transition="all 0.2s ease"
+        className={`wysiwyg-sticky-toolbar ${isToolbarScrolled ? 'scrolled' : ''}`}
       >
         <VStack spacing={3}>
           {/* 첫 번째 줄: 기본 서식 */}
@@ -869,24 +1244,42 @@ const WYSIWYGEditor: React.FC<WYSIWYGEditorProps> = ({
           <ModalCloseButton />
           <ModalBody>
             <VStack spacing={4}>
+              <Text fontSize="sm" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
+                💡 팁: 유튜브 링크를 삽입하면 자동으로 동영상이 임베드됩니다!
+              </Text>
               <Input
-                placeholder="링크 텍스트"
+                placeholder="링크 텍스트 (선택사항)"
                 value={linkText}
                 onChange={(e) => setLinkText(e.target.value)}
               />
               <Input
-                placeholder="URL (https://...)"
+                placeholder="URL (예: https://www.youtube.com/watch?v=... 또는 https://..."
                 value={linkUrl}
                 onChange={(e) => setLinkUrl(e.target.value)}
               />
+              {isYouTubeLink(linkUrl) && (
+                <Box p={3} bg={colorMode === 'dark' ? '#3c3c47' : '#f7fafc'} borderRadius="md" w="100%">
+                  <HStack spacing={2}>
+                    <Box fontSize="lg">🎥</Box>
+                    <VStack spacing={1} align="start">
+                      <Text fontSize="sm" fontWeight="600" color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}>
+                        유튜브 동영상 감지됨!
+                      </Text>
+                      <Text fontSize="xs" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
+                        링크와 함께 동영상이 글에 임베드됩니다.
+                      </Text>
+                    </VStack>
+                  </HStack>
+                </Box>
+              )}
             </VStack>
           </ModalBody>
           <ModalFooter>
             <Button variant="ghost" mr={3} onClick={onLinkClose}>
               취소
             </Button>
-            <Button onClick={handleLinkInsert}>
-              삽입
+            <Button onClick={handleLinkInsert} colorScheme={isYouTubeLink(linkUrl) ? 'red' : 'blue'}>
+              {isYouTubeLink(linkUrl) ? '동영상 임베드' : '링크 삽입'}
             </Button>
           </ModalFooter>
         </ModalContent>

@@ -20,11 +20,13 @@ import { StarIcon, AttachmentIcon, EditIcon, DeleteIcon } from '@chakra-ui/icons
 import { CommentList, CommentForm } from '../components/Comment';
 import EmptyState from '../components/EmptyState';
 import AdminHint from '../components/AdminHint';
+import { PostDetailSkeleton } from '../components/LoadingOptimizer';
 import SEOHead from '../components/SEOHead';
 import { QAPageJsonLd, BreadcrumbJsonLd } from '../components/JsonLd';
 import { useAuth } from '../contexts/AuthContext';
 import { loungeService, commentService, interactionService } from '../services/supabaseDataService';
 import { optimizedLoungeService, optimizedCommentService, optimizedInteractionService } from '../services/optimizedDataService';
+import { cacheService } from '../services/cacheService';
 import { formatDate } from '../utils/format';
 import { getTagById } from '../data/tags';
 import LevelBadge from '../components/UserLevel/LevelBadge';
@@ -45,12 +47,27 @@ const LoungeDetail: React.FC = () => {
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [scrapCount, setScrapCount] = useState(0);
   const [likeCount, setLikeCount] = useState(0);
+  const [isLiking, setIsLiking] = useState(false); // 좋아요 처리 중 상태
+  const [isBookmarking, setIsBookmarking] = useState(false); // 북마크 처리 중 상태
+  const [isLoading, setIsLoading] = useState(true); // 로딩 상태
 
   // Supabase 데이터 로드
   useEffect(() => {
     const loadPost = async () => {
       try {
+        setIsLoading(true);
+        // 일정 시간 동안 로딩 상태 유지 (최소 500ms)
+        const startTime = Date.now();
         const foundPost = await optimizedLoungeService.getById(postId, true); // 프리로딩 활성화
+        
+        // 최소 로딩 시간 보장하여 스켈레톤 UI가 보이도록
+        const elapsedTime = Date.now() - startTime;
+        const minLoadingTime = 500; // 최소 500ms 로딩
+        
+        if (elapsedTime < minLoadingTime) {
+          await new Promise(resolve => setTimeout(resolve, minLoadingTime - elapsedTime));
+        }
+        
         if (foundPost) {
           setPost(foundPost);
           setLikeCount(foundPost.like_count || 0);
@@ -135,6 +152,8 @@ const LoungeDetail: React.FC = () => {
           status: "error",
           duration: 5000,
         });
+      } finally {
+        setIsLoading(false);
       }
     };
     
@@ -152,16 +171,26 @@ const LoungeDetail: React.FC = () => {
       return;
     }
 
+    // 이미 처리 중이면 무시
+    if (isLiking) {
+      console.log('좋아요 처리 중이므로 요청 무시');
+      return;
+    }
+
     try {
-      console.log('🔄 좋아요 버튼 클릭됨, 현재 상태:', { isLiked, likeCount });
+      setIsLiking(true);
+      console.log('🔄 좋아요 처리 시작, 현재 상태:', { isLiked, likeCount });
       
       const result = await interactionService.toggleLike(user.id, postId, 'lounge');
-      console.log('🔄 좋아요 토글 결과:', result);
+      console.log('✅ 좋아요 처리 결과:', result);
       
       if (result.action === 'added') {
         console.log('➕ 좋아요 추가됨, UI 상태 업데이트');
         setIsLiked(true);
-        setLikeCount(likeCount + 1); // 전체 개수에 1 추가
+        setLikeCount(prev => {
+          console.log('➕ 좋아요 개수 증가:', prev, '→', prev + 1);
+          return prev + 1;
+        });
         toast({
           title: "좋아요를 눌렀습니다",
           status: "success",
@@ -170,7 +199,10 @@ const LoungeDetail: React.FC = () => {
       } else {
         console.log('❌ 좋아요 제거됨, UI 상태 업데이트');
         setIsLiked(false);
-        setLikeCount(likeCount - 1); // 전체 개수에서 1 제거
+        setLikeCount(prev => {
+          console.log('➖ 좋아요 개수 감소:', prev, '→', Math.max(0, prev - 1));
+          return Math.max(0, prev - 1); // 음수 방지
+        });
         toast({
           title: "좋아요를 취소했습니다",
           status: "success",
@@ -178,12 +210,14 @@ const LoungeDetail: React.FC = () => {
         });
       }
     } catch (error) {
-      console.error('좋아요 처리 실패:', error);
+      console.error('❌ 좋아요 처리 실패:', error);
       toast({
         title: "좋아요 처리 중 오류가 발생했습니다",
         status: "error",
         duration: 3000,
       });
+    } finally {
+      setIsLiking(false);
     }
   };
 
@@ -198,16 +232,26 @@ const LoungeDetail: React.FC = () => {
       return;
     }
 
+    // 이미 처리 중이면 무시
+    if (isBookmarking) {
+      console.log('북마크 처리 중이므로 요청 무시');
+      return;
+    }
+
     try {
-      console.log('🔄 북마크 버튼 클릭됨, 현재 상태:', { isBookmarked, scrapCount });
+      setIsBookmarking(true);
+      console.log('🔄 북마크 처리 시작, 현재 상태:', { isBookmarked, scrapCount });
       
       const result = await interactionService.toggleScrap(user.id, postId, 'lounge');
-      console.log('🔄 북마크 토글 결과:', result);
+      console.log('✅ 북마크 처리 결과:', result);
       
       if (result.action === 'added') {
         console.log('➕ 북마크 추가됨, UI 상태 업데이트');
         setIsBookmarked(true);
-        setScrapCount(scrapCount + 1);
+        setScrapCount(prev => {
+          console.log('➕ 북마크 개수 증가:', prev, '→', prev + 1);
+          return prev + 1;
+        });
         toast({
           title: "북마크에 추가했습니다",
           status: "success",
@@ -216,7 +260,10 @@ const LoungeDetail: React.FC = () => {
       } else {
         console.log('❌ 북마크 제거됨, UI 상태 업데이트');
         setIsBookmarked(false);
-        setScrapCount(scrapCount - 1);
+        setScrapCount(prev => {
+          console.log('➖ 북마크 개수 감소:', prev, '→', Math.max(0, prev - 1));
+          return Math.max(0, prev - 1); // 음수 방지
+        });
         toast({
           title: "북마크를 해제했습니다",
           status: "success",
@@ -224,12 +271,14 @@ const LoungeDetail: React.FC = () => {
         });
       }
     } catch (error) {
-      console.error('북마크 처리 실패:', error);
+      console.error('❌ 북마크 처리 실패:', error);
       toast({
         title: "북마크 처리 중 오류가 발생했습니다",
         status: "error",
         duration: 3000,
       });
+    } finally {
+      setIsBookmarking(false);
     }
   };
 
@@ -238,6 +287,24 @@ const LoungeDetail: React.FC = () => {
       try {
         const success = await loungeService.delete(postId);
         if (success) {
+          console.log('🗑️ 라운지 포스트 삭제 완료, 캐시 무효화 시작:', postId);
+          
+          // 관련 캐시 무효화
+          cacheService.invalidatePost('lounge', postId);
+          
+          // 추가적으로 전체 라운지 목록 캐시도 무효화
+          cacheService.deleteByPattern('lounge:*');
+          
+          // 사용자 프로필 캐시도 무효화
+          if (user?.id) {
+            cacheService.invalidateUser(user.id);
+          }
+          
+          // 홈 페이지 캐시도 무효화
+          cacheService.deleteByPattern('home:*');
+          
+          console.log('✅ 캐시 무효화 완료');
+          
           toast({
             title: '글이 삭제되었습니다',
             status: 'success',
@@ -491,6 +558,16 @@ const LoungeDetail: React.FC = () => {
     }
   };
 
+  // 로딩 중일 때 스켈레톤 UI 표시
+  if (isLoading) {
+    return (
+      <Container maxW="800px" py={8}>
+        <PostDetailSkeleton />
+      </Container>
+    );
+  }
+
+  // 게시글을 찾을 수 없을 때
   if (!post) {
     return (
       <Container maxW="800px" py={8}>
@@ -558,12 +635,21 @@ const LoungeDetail: React.FC = () => {
           )}
 
           <HStack justify="space-between" align="flex-start">
-            <Heading as="h1" size="xl" lineHeight="1.4" color={colorMode === 'dark' ? 'gray.50' : 'gray.900'} flex="1">
+            <Heading 
+              as="h1" 
+              size="xl" 
+              lineHeight="1.4" 
+              color={colorMode === 'dark' ? 'gray.50' : 'gray.900'} 
+              flex="1"
+              wordBreak="break-word"
+              whiteSpace="pre-wrap"
+              overflowWrap="break-word"
+            >
               {post.title}
             </Heading>
             
             {/* 작성자/관리자 수정/삭제 버튼 */}
-            {user && (isAdmin || post.author_name === user.name) && (
+            {user && (isAdmin || post.author_id === user.id || post.author_name === user.name) && (
               <HStack spacing={3} flexShrink={0} ml={6}>
                 <Button
                   leftIcon={<EditIcon />}
@@ -635,6 +721,7 @@ const LoungeDetail: React.FC = () => {
           fontSize="lg"
           lineHeight="1.8"
           color={colorMode === 'dark' ? 'gray.200' : 'gray.800'}
+          overflowY="auto"
           sx={{
             '& h1, & h2, & h3, & h4, & h5, & h6': {
               fontWeight: '600',
@@ -657,7 +744,8 @@ const LoungeDetail: React.FC = () => {
               const isHTML = content.includes('<p>') || content.includes('<h1>') || content.includes('<span style=');
               
               if (isHTML) {
-                // 이미 HTML이면 그대로 사용 (형광펜 스타일 보정)
+                // 이미 HTML이면 그대로 사용 (형광펜 스타일 최적화)
+                // 형광펜 배경색이 밝기 때문에 어두운 텍스트가 더 잘 보임
                 return content
                   .replace(/background-color:\s*rgb\(254,\s*240,\s*138\)/g, 'background-color: #fef08a; color: #1f2937')
                   .replace(/background-color:\s*rgb\(187,\s*247,\s*208\)/g, 'background-color: #bbf7d0; color: #1f2937')
@@ -665,7 +753,8 @@ const LoungeDetail: React.FC = () => {
                   .replace(/background-color:\s*rgb\(252,\s*231,\s*243\)/g, 'background-color: #fce7f3; color: #1f2937')
                   .replace(/background-color:\s*rgb\(233,\s*213,\s*255\)/g, 'background-color: #e9d5ff; color: #1f2937');
               } else {
-                // 마크다운이나 일반 텍스트면 변환
+                // 마크다운이나 일반 텍스트면 변환 (형광펜 최적화)
+                // 형광펜 배경색이 밝기 때문에 어두운 텍스트가 더 잘 보임
                 return content
                   .replace(/==(.*?)==/g, '<span style="background-color: #fef08a; color: #1f2937; padding: 2px 4px; border-radius: 3px;">$1</span>')
                   .replace(/==green\[(.*?)\]==/g, '<span style="background-color: #bbf7d0; color: #1f2937; padding: 2px 4px; border-radius: 3px;">$1</span>')
@@ -690,6 +779,9 @@ const LoungeDetail: React.FC = () => {
             colorScheme={isLiked ? "red" : "gray"}
             size="md"
             onClick={handleLike}
+            isLoading={isLiking}
+            loadingText={isLiked ? "취소 중..." : "좋아요 중..."}
+            disabled={isLiking || isBookmarking}
           >
             좋아요 {likeCount}
           </Button>
@@ -700,6 +792,9 @@ const LoungeDetail: React.FC = () => {
             colorScheme={isBookmarked ? "yellow" : "gray"}
             size="md"
             onClick={handleBookmark}
+            isLoading={isBookmarking}
+            loadingText={isBookmarked ? "해제 중..." : "북마크 중..."}
+            disabled={isBookmarking || isLiking}
           >
             북마크 {scrapCount}
           </Button>

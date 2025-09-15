@@ -18,6 +18,7 @@ import { getTagById } from '../data/tags';
 import LevelBadge from './UserLevel/LevelBadge';
 import PromotionBadge from './PromotionBadge';
 import { getUserDisplayLevel } from '../services/userLevelService';
+import OptimizedImage from './OptimizedImage';
 
 // HTML 태그를 제거하는 유틸리티 함수
 const stripHtmlTags = (html: string): string => {
@@ -134,12 +135,17 @@ const Card: React.FC<CardProps> = ({
     >
       <CardBody p={0}>
         {imageUrl && (
-          <Image
+          <OptimizedImage
             src={imageUrl}
             alt={title}
-            w="full"
-            h="200px"
+            width="full"
+            height="200px"
             objectFit="cover"
+            loading="lazy"
+            placeholder="blur"
+            onError={(e) => {
+              console.warn('Card image failed to load:', imageUrl);
+            }}
           />
         )}
         
@@ -177,6 +183,9 @@ const Card: React.FC<CardProps> = ({
               lineHeight="1.4"
               noOfLines={2}
               color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}
+              wordBreak="break-word"
+              whiteSpace="pre-wrap"
+              overflowWrap="break-word"
             >
               {title}
             </Text>

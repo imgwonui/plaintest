@@ -19,7 +19,7 @@ import { Link } from 'react-router-dom';
 import Card from '../components/Card';
 import EmptyState from '../components/EmptyState';
 import { CardSkeletonGrid } from '../components/LoadingSpinner';
-import { PostCardSkeleton, ListSkeleton } from '../components/LoadingOptimizer';
+import { PostCardSkeleton, ListSkeleton, WeeklyTopicSkeleton } from '../components/LoadingOptimizer';
 import SEOHead from '../components/SEOHead';
 import { OrganizationJsonLd, WebSiteJsonLd } from '../components/JsonLd';
 import { WebAnalytics } from '../components/Analytics';
@@ -27,6 +27,11 @@ import { storyService, loungeService, userService, testConnection } from '../ser
 import { optimizedStoryService, optimizedLoungeService } from '../services/optimizedDataService';
 import LevelBadge from '../components/UserLevel/LevelBadge';
 import { getUserDisplayLevel } from '../services/userLevelService';
+import OptimizedImage from '../components/OptimizedImage';
+import { preloadHomeImages } from '../utils/imagePreloader';
+import { cacheService } from '../services/cacheService';
+import { LastKnownGoodDataManager } from '../utils/connectionUtils';
+import ConnectionStatusIndicator, { useConnectionStatus } from '../components/ConnectionStatusIndicator';
 
 const Home: React.FC = () => {
   const { colorMode } = useColorMode();
@@ -38,38 +43,124 @@ const Home: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [showingAllLounge, setShowingAllLounge] = useState(false);
   
+  // 연결 상태 관리
+  const {
+    status: connectionStatus,
+    reportError,
+    startRetry,
+    reportSuccess,
+    endRetry
+  } = useConnectionStatus();
+  
   // Supabase 데이터 로드
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        setIsLoading(true);
+  const loadData = async () => {
+    try {
+      setIsLoading(true);
+      
+      // 재시도 중이라면 상태 업데이트
+      if (connectionStatus.retryCount > 0) {
+        startRetry();
+      }
         
-        // 최적화된 서비스로 스토리와 라운지 포스트를 병렬로 로드 (적절한 수량으로 조정)
+        // 캐시를 강제로 새로고침하여 삭제된 데이터 문제 방지
         const [storiesData, loungeData] = await Promise.all([
-          optimizedStoryService.getAll(1, 10), // 홈페이지용으로 10개로 축소
-          optimizedLoungeService.getAll(1, 20)  // 라운지는 20개로 축소
+          optimizedStoryService.getAll(1, 10, true, true), // forceRefresh = true로 캐시 새로고침
+          optimizedLoungeService.getAll(1, 20, undefined, true, true)  // forceRefresh = true
         ]);
         
-        setStories(storiesData.stories || []);
-        setLoungePosts(loungeData.posts || []);
-        setDisplayedLoungePosts((loungeData.posts || []).slice(0, 15));
+        // 유효한 스토리만 필터링 (id, title, summary가 있는 것)
+        const validStories = (storiesData.stories || []).filter(story => 
+          story && story.id && story.title && story.title.trim() !== ''
+        );
+        
+        // 유효한 라운지 포스트만 필터링
+        const validLoungePosts = (loungeData.posts || []).filter(post => 
+          post && post.id && post.title && post.title.trim() !== ''
+        );
+        
+        setStories(validStories);
+        setLoungePosts(validLoungePosts);
+        setDisplayedLoungePosts(validLoungePosts.slice(0, 15));
+        
+        // 이미지 프리로딩 시작 (유효한 데이터만)
+        preloadHomeImages.preloadStoriesAndLounge(
+          validStories, 
+          validLoungePosts
+        ).catch(err => console.warn('Image preloading failed:', err));
+        
+        // 성공 상태 보고
+        reportSuccess();
         
         console.log('✅ Home 데이터 로드 성공:', {
-          스토리수: storiesData.stories?.length || 0,
-          라운지글수: loungeData.posts?.length || 0
+          전체스토리수: storiesData.stories?.length || 0,
+          유효한스토리수: validStories.length,
+          전체라운지글수: loungeData.posts?.length || 0,
+          유효한라운지글수: validLoungePosts.length
         });
+        
+        // 삭제된 데이터가 감지되었다면 경고 로그
+        const deletedStoriesCount = (storiesData.stories?.length || 0) - validStories.length;
+        const deletedPostsCount = (loungeData.posts?.length || 0) - validLoungePosts.length;
+        
+        if (deletedStoriesCount > 0 || deletedPostsCount > 0) {
+          console.warn('🗑️ 삭제되거나 유효하지 않은 데이터 감지:', {
+            삭제된스토리수: deletedStoriesCount,
+            삭제된포스트수: deletedPostsCount
+          });
+          
+          // 삭제된 데이터가 감지되면 캐시 정리
+          cacheService.cleanupDeletedData();
+        }
         
       } catch (error) {
         console.error('❌ Home 데이터 로드 실패:', error);
-        // 에러가 발생해도 빈 배열로 설정하여 UI가 깨지지 않도록
-        setStories([]);
-        setLoungePosts([]);
-        setDisplayedLoungePosts([]);
+        
+        // 에러 상태 보고
+        reportError(error as Error);
+        endRetry();
+        
+        // 마지막으로 알려진 좋은 데이터를 사용해서 사용자 경험 개선
+        console.log('🔄 마지막 성공 데이터 확인 중...');
+        
+        const lastStoriesData = LastKnownGoodDataManager.get('stories_1_10', 24 * 60 * 60 * 1000); // 24시간
+        const lastLoungeData = LastKnownGoodDataManager.get('lounge_1_20_all', 24 * 60 * 60 * 1000);
+        
+        if (lastStoriesData || lastLoungeData) {
+          console.log('🔄 마지막 성공 데이터 사용:', {
+            스토리: lastStoriesData?.stories?.length || 0,
+            라운지: lastLoungeData?.posts?.length || 0
+          });
+          
+          // 마지막 성공 데이터가 있으면 사용
+          const validStories = lastStoriesData?.stories || [];
+          const validLoungePosts = lastLoungeData?.posts || [];
+          
+          setStories(validStories);
+          setLoungePosts(validLoungePosts);
+          setDisplayedLoungePosts(validLoungePosts.slice(0, 15));
+          
+          // 사용자에게 오프라인 데이터라는 것을 알리기 위해 콘솔 메시지
+          console.warn('⚠️ 네트워크 연결 문제로 이전 데이터를 표시합니다.');
+        } else {
+          // 마지막 성공 데이터도 없으면 빈 배열로 설정
+          console.log('🚫 사용 가능한 백업 데이터 없음');
+          setStories([]);
+          setLoungePosts([]);
+          setDisplayedLoungePosts([]);
+        }
       } finally {
         setIsLoading(false);
       }
     };
 
+  // 데이터 재시도 함수
+  const retryLoadData = async () => {
+    console.log('🔄 사용자 요청으로 데이터 재시도...');
+    await loadData();
+  };
+
+  // 초기 데이터 로드
+  useEffect(() => {
     loadData();
   }, []);
   
@@ -137,9 +228,18 @@ const Home: React.FC = () => {
       <WebSiteJsonLd />
       <WebAnalytics />
       <Container maxW="1200px" py={{ base: 6, md: 8 }}>
+        {/* 연결 상태 표시 */}
+        <ConnectionStatusIndicator 
+          status={connectionStatus}
+          onRetry={retryLoadData}
+          showDetails={true}
+        />
+        
       <VStack spacing={10} align="stretch">
         {/* Weekly Topic Feature - Full Width */}
-        {currentWeeklyTopic && (
+        {isLoading ? (
+          <WeeklyTopicSkeleton />
+        ) : currentWeeklyTopic && currentWeeklyTopic.id && currentWeeklyTopic.title ? (
             <Box py={4}>
               
               <HStack spacing={8} align="stretch" w="100%">
@@ -160,13 +260,22 @@ const Home: React.FC = () => {
                   borderRadius="8px"
                   overflow="hidden"
                 >
-                  <Image
+                  <OptimizedImage
                     src={currentWeeklyTopic.image_url}
                     alt={currentWeeklyTopic.title}
-                    w="750px"
-                    h="550px"
+                    width="750px"
+                    height="550px"
                     objectFit="cover"
                     borderRadius="8px"
+                    priority={true}
+                    loading="eager"
+                    placeholder="blur"
+                    onLoad={() => {
+                      console.log('Weekly topic image loaded successfully');
+                    }}
+                    onError={(e) => {
+                      console.warn('Weekly topic image failed to load:', currentWeeklyTopic.image_url);
+                    }}
                   />
                 </Box>
                 
@@ -244,7 +353,7 @@ const Home: React.FC = () => {
                 </VStack>
               </HStack>
             </Box>
-          )}
+        ) : null}
 
         {/* Latest Stories */}
         <VStack spacing={6} align="stretch">
@@ -354,6 +463,10 @@ const Home: React.FC = () => {
                       color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}
                       lineHeight="1.4"
                       noOfLines={2}
+                      wordBreak="break-word"
+                      whiteSpace="pre-wrap"
+                      maxW="100%"
+                      overflowWrap="break-word"
                     >
                       {post.title}
                     </Text>

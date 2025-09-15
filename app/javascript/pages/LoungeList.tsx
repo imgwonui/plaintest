@@ -593,6 +593,8 @@ const LoungeList: React.FC = () => {
                                   color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}
                                   noOfLines={1}
                                   maxW="300px"
+                                  wordBreak="break-word"
+                                  overflowWrap="break-word"
                                 >
                                   {post.title}
                                 </Text>

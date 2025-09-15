@@ -29,6 +29,7 @@ import WYSIWYGEditor from '../components/WYSIWYGEditor';
 import { storyService } from '../services/supabaseDataService';
 import { useAuth } from '../contexts/AuthContext';
 import TagSelector from '../components/TagSelector';
+import { compressImage, isImageFile, needsCompression } from '../utils/imageCompressor';
 
 const StoryNew: React.FC = () => {
   const { colorMode } = useColorMode();
@@ -61,36 +62,95 @@ const StoryNew: React.FC = () => {
   }, [isAdmin, navigate, toast]);
 
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) { // 5MB 제한
-        toast({
-          title: "파일 크기가 너무 큽니다",
-          description: "5MB 이하의 이미지를 선택해주세요",
-          status: "error",
-          duration: 3000,
-        });
-        return;
-      }
+    if (!file) return;
 
-      if (!file.type.startsWith('image/')) {
-        toast({
-          title: "이미지 파일만 업로드할 수 있습니다",
-          status: "error",
-          duration: 3000,
-        });
-        return;
-      }
+    // 이미진 파일 검증
+    if (!isImageFile(file)) {
+      toast({
+        title: "이미진 파일만 업로드할 수 있습니다",
+        status: "error",
+        duration: 3000,
+      });
+      return;
+    }
 
-      setThumbnailImage(file);
+    // 최대 파일 크기 검증 (50MB)
+    if (file.size > 50 * 1024 * 1024) {
+      toast({
+        title: "파일 크기가 너무 큽니다",
+        description: "50MB 이하의 이미지를 선택해주세요.",
+        status: "error",
+        duration: 3000,
+      });
+      return;
+    }
+
+    let finalFile = file;
+
+    try {
+      // 5MB 이상인 경우 자동 압축 (사용자에게 알리지 않음)
+      if (needsCompression(file, 5)) {
+        console.log('큰 이미진 감지, 자동 압축 시작:', file.size, 'bytes');
+        
+        const compressionResult = await compressImage(file, {
+          maxSizeMB: 5,
+          maxWidth: 1920,
+          maxHeight: 1080,
+          quality: 0.8
+        });
+
+        if (compressionResult && compressionResult.compressedFile) {
+          finalFile = compressionResult.compressedFile;
+          console.log('이미지 압축 성공:', file.size, '→', finalFile.size, 'bytes');
+        } else {
+          console.warn('압축 실패, 원본 파일 사용');
+          finalFile = file;
+        }
+      }
+    } catch (compressionError) {
+      console.error('이미진 압축 중 오류 발생:', compressionError);
+      // 압축 실패 시 원본 파일 사용
+      finalFile = file;
+      console.log('압축 실패로 원본 파일 사용:', file.size, 'bytes');
+    }
+
+    // 파일 설정 및 미리보기 생성
+    try {
+      setThumbnailImage(finalFile);
       
-      // 미리보기 생성
       const reader = new FileReader();
       reader.onload = (event) => {
-        setThumbnailPreview(event.target?.result as string);
+        if (event.target?.result) {
+          setThumbnailPreview(event.target.result as string);
+        }
       };
-      reader.readAsDataURL(file);
+      
+      reader.onerror = () => {
+        console.error('파일 읽기 실패');
+        toast({
+          title: "이미직 읽기 실패",
+          description: "이미지 파일을 읽는 중 오류가 발생했습니다.",
+          status: "error",
+          duration: 3000,
+        });
+      };
+      
+      reader.readAsDataURL(finalFile);
+      
+    } catch (error) {
+      console.error('이미직 처리 실패:', error);
+      toast({
+        title: "이미짇 처리 실패",
+        description: "이미짇를 처리하는 중 예상치 못한 오류가 발생했습니다. 다른 이미짇를 시도해보세요.",
+        status: "error",
+        duration: 4000,
+      });
+      
+      // 에러 시 상태 초기화
+      setThumbnailImage(null);
+      setThumbnailPreview('');
     }
   };
 
@@ -100,6 +160,7 @@ const StoryNew: React.FC = () => {
   };
 
   const handleSubmit = async () => {
+    // 입력 값 검증
     if (!title.trim() || !content.trim() || !summary.trim()) {
       toast({
         title: "필수 필드를 모두 입력해주세요",
@@ -120,41 +181,60 @@ const StoryNew: React.FC = () => {
       return;
     }
 
+    // 사용자 인증 확인
+    if (!user || !isAdmin) {
+      toast({
+        title: "관리자 권한이 필요합니다",
+        description: "스토리는 관리자만 작성할 수 있습니다.",
+        status: "error",
+        duration: 3000,
+      });
+      return;
+    }
+
     setIsSubmitting(true);
     
     try {
-      // 실제로는 이미지를 서버에 업로드하고 URL을 받아와야 함
-      // 여기서는 데모용으로 썸네일 미리보기 URL을 사용
+      console.log('==================== 스토리 작성 시작 ====================');
+      console.log('👤 사용자 정보:', { 
+        id: user.id, 
+        name: user.name, 
+        isAdmin: user.isAdmin 
+      });
+      console.log('📋 작성 데이터:', {
+        title: title.trim(),
+        summary: summary.trim(),
+        contentLength: content.trim().length,
+        readTime,
+        tags: selectedTags,
+        isVerified,
+        thumbnailSize: thumbnailImage?.size
+      });
+      
+      // 이미지 URL 준비 (실제로는 서버에 업로드 후 URL 받아와야 함)
       const imageUrl = thumbnailPreview;
       
-      // 스토리 생성
-      console.log('🔍 스토리 생성 전 검수 상태:', {
-        isVerified
-      });
-      
-      console.log('📝 스토리 생성 데이터 준비:', {
+      // 스토리 생성 데이터 준비
+      const storyData = {
         title: title.trim(),
         content: content.trim(),
         summary: summary.trim(),
-        author_name: user?.name || '관리자'
-      });
-      
-      const newStory = await storyService.create({
-        title: title.trim(),
-        content: content.trim(),
-        summary: summary.trim(),
-        author_name: user?.name || '관리자',
-        author_id: user?.id,
+        author_name: user.name,
+        author_id: user.id,
         image_url: imageUrl,
         read_time: readTime,
         tags: selectedTags,
-        is_verified: isVerified
-      });
+        is_verified: isVerified,
+        verification_badge: isVerified ? verificationBadge : null
+      };
       
-      console.log('✅ 새 스토리가 생성되었습니다:', newStory);
-      console.log('🔍 생성된 스토리의 검수 정보:', {
-        is_verified: newStory.is_verified
-      });
+      console.log('📤 Supabase로 전송할 데이터:', storyData);
+      
+      // 스토리 생성 시도
+      const newStory = await storyService.create(storyData);
+      
+      console.log('✅ 스토리 생성 성공:', newStory);
+      console.log('==================== 스토리 작성 완료 ====================');
       
       toast({
         title: "✨ 스토리가 성공적으로 등록되었습니다!",
@@ -173,12 +253,37 @@ const StoryNew: React.FC = () => {
       });
       
     } catch (error) {
-      console.error('스토리 작성 실패:', error);
+      console.error('==================== 스토리 작성 오류 ====================');
+      console.error('❌ 오류 상세:', error);
+      
+      // 에러 타입에 따른 메시지 처리
+      let errorMessage = "스토리 작성 중 오류가 발생했습니다";
+      let errorDescription = "";
+      
+      if (error && typeof error === 'object' && 'message' in error) {
+        const errorMsg = (error as Error).message;
+        
+        if (errorMsg.includes('RLS') || errorMsg.includes('policy')) {
+          errorMessage = "데이터베이스 권한 문제";
+          errorDescription = "Supabase 데이터베이스 접근 권한에 문제가 있습니다. 잠시 후 다시 시도해주세요.";
+        } else if (errorMsg.includes('network') || errorMsg.includes('fetch')) {
+          errorMessage = "네트워크 연결 오류";
+          errorDescription = "인터넷 연결을 확인하고 다시 시도해주세요.";
+        } else if (errorMsg.includes('user') || errorMsg.includes('author')) {
+          errorMessage = "사용자 인증 문제";
+          errorDescription = "로그아웃 후 다시 로그인해주세요.";
+        }
+      }
+      
       toast({
-        title: "스토리 작성 중 오류가 발생했습니다",
+        title: errorMessage,
+        description: errorDescription,
         status: "error",
-        duration: 3000,
+        duration: 5000,
       });
+      
+      console.error('==================== 에러 처리 완료 ====================');
+      
     } finally {
       setIsSubmitting(false);
     }

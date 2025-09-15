@@ -26,8 +26,9 @@ import {
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import WYSIWYGEditor from '../components/WYSIWYGEditor';
-import { AttachmentIcon, DeleteIcon } from '@chakra-ui/icons';
+import { AttachmentIcon, DeleteIcon, CloseIcon } from '@chakra-ui/icons';
 import { storyService } from '../services/supabaseDataService';
+import { compressImage, isImageFile, needsCompression } from '../utils/imageCompressor';
 
 interface StoryForm {
   title: string;
@@ -65,8 +66,107 @@ const AdminStoryNew: React.FC = () => {
     verificationBadge: '',
   });
 
+  const [thumbnailImage, setThumbnailImage] = useState<File | null>(null);
+  const [thumbnailPreview, setThumbnailPreview] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // 썸네일 이미지 업로드 핸들러
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // 이미지 파일 검증
+    if (!isImageFile(file)) {
+      toast({
+        title: "이미지 파일만 업로드할 수 있습니다",
+        status: "error",
+        duration: 3000,
+      });
+      return;
+    }
+
+    // 최대 파일 크기 검증 (50MB)
+    if (file.size > 50 * 1024 * 1024) {
+      toast({
+        title: "파일 크기가 너무 큽니다",
+        description: "50MB 이하의 이미지를 선택해주세요.",
+        status: "error",
+        duration: 3000,
+      });
+      return;
+    }
+
+    let finalFile = file;
+
+    try {
+      // 5MB 이상인 경우 자동 압축
+      if (needsCompression(file, 5)) {
+        console.log('큰 이미지 감지, 자동 압축 시작:', file.size, 'bytes');
+        
+        const compressionResult = await compressImage(file, {
+          maxSizeMB: 5,
+          maxWidth: 1920,
+          maxHeight: 1080,
+          quality: 0.8
+        });
+
+        if (compressionResult && compressionResult.compressedFile) {
+          finalFile = compressionResult.compressedFile;
+          console.log('이미지 압축 성공:', file.size, '→', finalFile.size, 'bytes');
+        } else {
+          console.warn('압축 실패, 원본 파일 사용');
+          finalFile = file;
+        }
+      }
+    } catch (compressionError) {
+      console.error('이미지 압축 중 오류 발생:', compressionError);
+      finalFile = file;
+      console.log('압축 실패로 원본 파일 사용:', file.size, 'bytes');
+    }
+
+    // 파일 설정 및 미리보기 생성
+    try {
+      setThumbnailImage(finalFile);
+      
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          setThumbnailPreview(event.target.result as string);
+        }
+      };
+      
+      reader.onerror = () => {
+        console.error('파일 읽기 실패');
+        toast({
+          title: "이미지 읽기 실패",
+          description: "이미지 파일을 읽는 중 오류가 발생했습니다.",
+          status: "error",
+          duration: 3000,
+        });
+      };
+      
+      reader.readAsDataURL(finalFile);
+      
+    } catch (error) {
+      console.error('이미지 처리 실패:', error);
+      toast({
+        title: "이미지 처리 실패",
+        description: "이미지를 처리하는 중 예상치 못한 오류가 발생했습니다. 다른 이미지를 시도해보세요.",
+        status: "error",
+        duration: 4000,
+      });
+      
+      // 에러 시 상태 초기화
+      setThumbnailImage(null);
+      setThumbnailPreview('');
+    }
+  };
+
+  // 썸네일 이미지 제거
+  const removeThumbnailImage = () => {
+    setThumbnailImage(null);
+    setThumbnailPreview('');
+  };
 
   const handleSubmit = async () => {
     if (!storyForm.title.trim() || !storyForm.content.trim() || !storyForm.summary.trim()) {
@@ -79,17 +179,32 @@ const AdminStoryNew: React.FC = () => {
       return;
     }
 
+    if (!thumbnailImage || !thumbnailPreview) {
+      toast({
+        title: "썸네일 이미지를 업로드해주세요",
+        description: "Story에는 썸네일 이미지가 필요합니다",
+        status: "error",
+        duration: 3000,
+      });
+      return;
+    }
+
     setIsSubmitting(true);
     
     try {
       console.log('📝 관리자 스토리 생성 시작:', storyForm);
       
-      // Supabase에 Story 저장 (검수 배지 포함)
+      // 이미지 URL 준비 (실제로는 서버에 업로드 후 URL 받아와야 함)
+      const imageUrl = thumbnailPreview;
+
+      // Supabase에 Story 저장 (검수 배지 및 썸네일 포함)
       const storyData = {
         title: storyForm.title.trim(),
         content: storyForm.content.trim(),
         summary: storyForm.summary.trim(),
         author_name: user?.name || '관리자',
+        image_url: imageUrl,
+        read_time: storyForm.readTime,
         is_verified: storyForm.isVerified,
         verification_badge: storyForm.isVerified ? storyForm.verificationBadge : null
       };
@@ -251,6 +366,48 @@ const AdminStoryNew: React.FC = () => {
             </FormHelperText>
           </FormControl>
 
+          {/* 썸네일 이미지 업로드 */}
+          <FormControl>
+            <FormLabel fontWeight="500" color={colorMode === 'dark' ? '#c3c3c6' : '#4d4d59'}>
+              썸네일 이미지 *
+            </FormLabel>
+            
+            {thumbnailPreview ? (
+              <VStack spacing={4} align="stretch">
+                <HStack>
+                  <Image
+                    src={thumbnailPreview}
+                    alt="썸네일 미리보기"
+                    w="200px"
+                    h="120px"
+                    objectFit="cover"
+                    borderRadius="md"
+                    border={colorMode === 'dark' ? '1px solid #4d4d59' : '1px solid #e4e4e5'}
+                  />
+                  <IconButton
+                    aria-label="이미지 제거"
+                    icon={<CloseIcon />}
+                    size="sm"
+                    colorScheme="red"
+                    onClick={removeThumbnailImage}
+                  />
+                </HStack>
+              </VStack>
+            ) : (
+              <Input
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                bg={colorMode === 'dark' ? '#3c3c47' : 'white'}
+                border={colorMode === 'dark' ? '1px solid #4d4d59' : '1px solid #e4e4e5'}
+                _hover={{ borderColor: colorMode === 'dark' ? '#626269' : '#9e9ea4' }}
+              />
+            )}
+            
+            <FormHelperText>
+              권장 크기: 400x240px, 최대 50MB (자동 압축됩니다)
+            </FormHelperText>
+          </FormControl>
 
           {/* 예상 읽기 시간 */}
           <FormControl>
@@ -379,7 +536,7 @@ const AdminStoryNew: React.FC = () => {
                   onClick={handleSubmit}
                   isLoading={isSubmitting}
                   loadingText="발행 중..."
-                  disabled={!storyForm.title.trim() || !storyForm.content.trim() || !storyForm.summary.trim()}
+                  disabled={!storyForm.title.trim() || !storyForm.content.trim() || !storyForm.summary.trim() || !thumbnailImage}
                   size="lg"
                   px={8}
                 >

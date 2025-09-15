@@ -158,6 +158,296 @@ export const CommentSkeleton: React.FC = () => {
   );
 };
 
+// 상세 페이지 스켈레톤 컴포넌트
+export const PostDetailSkeleton: React.FC = () => {
+  const shimmerBg = useColorModeValue(
+    'linear-gradient(90deg, #f0f0f0 0px, #e0e0e0 40px, #f0f0f0 80px)',
+    'linear-gradient(90deg, #2d3748 0px, #4a5568 40px, #2d3748 80px)'
+  );
+
+  return (
+    <VStack spacing={8} align="stretch">
+      {/* 헤더 영역 */}
+      <VStack spacing={4} align="flex-start">
+        {/* 타입/카테고리 뱃지 */}
+        <Box
+          height="24px"
+          width="80px"
+          bg={shimmerBg}
+          backgroundSize="200px 100%"
+          animation={`${shimmer} 1.5s infinite linear`}
+          borderRadius="full"
+        />
+        
+        {/* 제목 */}
+        <VStack spacing={2} align="flex-start" w="100%">
+          <Box
+            height="32px"
+            width="100%"
+            bg={shimmerBg}
+            backgroundSize="200px 100%"
+            animation={`${shimmer} 1.5s infinite linear`}
+            borderRadius="md"
+          />
+          <Box
+            height="32px"
+            width="70%"
+            bg={shimmerBg}
+            backgroundSize="200px 100%"
+            animation={`${shimmer} 1.5s infinite linear`}
+            borderRadius="md"
+          />
+        </VStack>
+        
+        {/* 메타 정보 */}
+        <HStack spacing={6}>
+          <Box
+            height="16px"
+            width="80px"
+            bg={shimmerBg}
+            backgroundSize="200px 100%"
+            animation={`${shimmer} 1.5s infinite linear`}
+            borderRadius="sm"
+          />
+          <Box
+            height="16px"
+            width="60px"
+            bg={shimmerBg}
+            backgroundSize="200px 100%"
+            animation={`${shimmer} 1.5s infinite linear`}
+            borderRadius="sm"
+          />
+          <Box
+            height="16px"
+            width="100px"
+            bg={shimmerBg}
+            backgroundSize="200px 100%"
+            animation={`${shimmer} 1.5s infinite linear`}
+            borderRadius="sm"
+          />
+        </HStack>
+      </VStack>
+
+      {/* 액션 버튼 영역 */}
+      <HStack spacing={4}>
+        <Box
+          height="40px"
+          width="80px"
+          bg={shimmerBg}
+          backgroundSize="200px 100%"
+          animation={`${shimmer} 1.5s infinite linear`}
+          borderRadius="md"
+        />
+        <Box
+          height="40px"
+          width="80px"
+          bg={shimmerBg}
+          backgroundSize="200px 100%"
+          animation={`${shimmer} 1.5s infinite linear`}
+          borderRadius="md"
+        />
+      </HStack>
+
+      {/* 구분선 */}
+      <Box
+        height="1px"
+        width="100%"
+        bg={shimmerBg}
+        backgroundSize="200px 100%"
+        animation={`${shimmer} 1.5s infinite linear`}
+      />
+
+      {/* 콘텐츠 영역 */}
+      <VStack spacing={3} align="flex-start">
+        {Array.from({ length: 8 }, (_, index) => (
+          <Box
+            key={index}
+            height="20px"
+            width={index === 7 ? "60%" : index % 3 === 0 ? "95%" : "100%"}
+            bg={shimmerBg}
+            backgroundSize="200px 100%"
+            animation={`${shimmer} 1.5s infinite linear`}
+            borderRadius="sm"
+          />
+        ))}
+      </VStack>
+
+      {/* 태그 영역 */}
+      <HStack spacing={2}>
+        {Array.from({ length: 3 }, (_, index) => (
+          <Box
+            key={index}
+            height="24px"
+            width="60px"
+            bg={shimmerBg}
+            backgroundSize="200px 100%"
+            animation={`${shimmer} 1.5s infinite linear`}
+            borderRadius="full"
+          />
+        ))}
+      </HStack>
+
+      {/* 구분선 */}
+      <Box
+        height="1px"
+        width="100%"
+        bg={shimmerBg}
+        backgroundSize="200px 100%"
+        animation={`${shimmer} 1.5s infinite linear`}
+      />
+
+      {/* 댓글 섹션 헤더 */}
+      <VStack spacing={4} align="flex-start">
+        <Box
+          height="24px"
+          width="120px"
+          bg={shimmerBg}
+          backgroundSize="200px 100%"
+          animation={`${shimmer} 1.5s infinite linear`}
+          borderRadius="md"
+        />
+        
+        {/* 댓글 스켈레톤 */}
+        {Array.from({ length: 2 }, (_, index) => (
+          <CommentSkeleton key={index} />
+        ))}
+      </VStack>
+    </VStack>
+  );
+};
+
+// 이 주의 토픽 스켈레톤 컴포넌트
+export const WeeklyTopicSkeleton: React.FC = () => {
+  const shimmerBg = useColorModeValue(
+    'linear-gradient(90deg, #f0f0f0 0px, #e0e0e0 40px, #f0f0f0 80px)',
+    'linear-gradient(90deg, #2d3748 0px, #4a5568 40px, #2d3748 80px)'
+  );
+
+  return (
+    <Box py={4}>
+      <HStack spacing={8} align="stretch" w="100%">
+        {/* 이미지 스켈레톤 */}
+        <Box
+          w="750px"
+          h="550px"
+          flexShrink={0}
+          bg={shimmerBg}
+          backgroundSize="200px 100%"
+          animation={`${shimmer} 1.5s infinite linear`}
+          borderRadius="8px"
+        />
+        
+        {/* 콘텐츠 스켈레톤 */}
+        <VStack 
+          flex="1" 
+          spacing={4} 
+          align="flex-start" 
+          justify="center"
+          minH="550px"
+          py={12}
+        >
+          {/* "이 주의 토픽" 레이블 */}
+          <Box
+            height="24px"
+            width="120px"
+            bg={shimmerBg}
+            backgroundSize="200px 100%"
+            animation={`${shimmer} 1.5s infinite linear`}
+            borderRadius="md"
+          />
+          
+          {/* 제목 스켈레톤 */}
+          <VStack spacing={2} align="flex-start" w="90%">
+            <Box
+              height="36px"
+              width="100%"
+              bg={shimmerBg}
+              backgroundSize="200px 100%"
+              animation={`${shimmer} 1.5s infinite linear`}
+              borderRadius="md"
+            />
+            <Box
+              height="36px"
+              width="80%"
+              bg={shimmerBg}
+              backgroundSize="200px 100%"
+              animation={`${shimmer} 1.5s infinite linear`}
+              borderRadius="md"
+            />
+          </VStack>
+          
+          {/* 요약 스켈레톤 */}
+          <VStack spacing={2} align="flex-start" w="90%" mt={4}>
+            <Box
+              height="18px"
+              width="100%"
+              bg={shimmerBg}
+              backgroundSize="200px 100%"
+              animation={`${shimmer} 1.5s infinite linear`}
+              borderRadius="sm"
+            />
+            <Box
+              height="18px"
+              width="85%"
+              bg={shimmerBg}
+              backgroundSize="200px 100%"
+              animation={`${shimmer} 1.5s infinite linear`}
+              borderRadius="sm"
+            />
+            <Box
+              height="18px"
+              width="70%"
+              bg={shimmerBg}
+              backgroundSize="200px 100%"
+              animation={`${shimmer} 1.5s infinite linear`}
+              borderRadius="sm"
+            />
+          </VStack>
+          
+          {/* 메타 정보 스켈레톤 */}
+          <VStack spacing={3} align="flex-start" mt={4}>
+            <HStack spacing={6}>
+              <Box
+                height="16px"
+                width="60px"
+                bg={shimmerBg}
+                backgroundSize="200px 100%"
+                animation={`${shimmer} 1.5s infinite linear`}
+                borderRadius="sm"
+              />
+              <Box
+                height="16px"
+                width="60px"
+                bg={shimmerBg}
+                backgroundSize="200px 100%"
+                animation={`${shimmer} 1.5s infinite linear`}
+                borderRadius="sm"
+              />
+              <Box
+                height="16px"
+                width="60px"
+                bg={shimmerBg}
+                backgroundSize="200px 100%"
+                animation={`${shimmer} 1.5s infinite linear`}
+                borderRadius="sm"
+              />
+            </HStack>
+            
+            <Box
+              height="16px"
+              width="150px"
+              bg={shimmerBg}
+              backgroundSize="200px 100%"
+              animation={`${shimmer} 1.5s infinite linear`}
+              borderRadius="sm"
+            />
+          </VStack>
+        </VStack>
+      </HStack>
+    </Box>
+  );
+};
+
 // 목록 스켈레톤 컴포넌트
 interface ListSkeletonProps {
   count?: number;
@@ -385,6 +675,8 @@ export const usePaginationLoading = () => {
 export default {
   PostCardSkeleton,
   CommentSkeleton,
+  PostDetailSkeleton,
+  WeeklyTopicSkeleton,
   ListSkeleton,
   ProgressiveLoading,
   LazyLoad,

@@ -195,6 +195,28 @@ class CacheService {
   invalidateUser(userId: string): void {
     this.delete(`user:${userId}`);
   }
+
+  // 삭제된 데이터로 인한 캐시 정리 (데이터 무결성 보장)
+  cleanupDeletedData(): void {
+    console.log('🧹 삭제된 데이터 캐시 정리 시작...');
+    
+    // 모든 스토리와 라운지 관련 캐시 강제 삭제
+    this.deleteByPattern('story:*');
+    this.deleteByPattern('lounge:*');
+    this.deleteByPattern('comments:*');
+    
+    // 검색 결과도 정리 (삭제된 게시물이 포함될 수 있음)
+    this.deleteByPattern('search:*');
+    
+    console.log('✅ 캐시 정리 완료');
+  }
+
+  // 강제 전체 새로고침 (삭제된 데이터 문제 해결용)
+  forceRefreshAll(): void {
+    console.log('🔄 전체 캐시 강제 새로고침...');
+    this.clear();
+    console.log('✅ 전체 캐시 삭제 완료 - 다음 요청시 최신 데이터 로드');
+  }
 }
 
 // 싱글톤 인스턴스 생성
@@ -209,19 +231,27 @@ if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
     service: cacheService,
     stats: () => cacheService.getStats(),
     clear: () => cacheService.clear(),
+    cleanup: () => cacheService.cleanupDeletedData(),
+    forceRefresh: () => cacheService.forceRefreshAll(),
     info: () => console.log(`
 🧠 Plain 캐시 서비스 디버그
 
 사용 가능한 명령어:
-- PlainCache.stats()     : 캐시 통계 확인
-- PlainCache.clear()     : 모든 캐시 삭제
-- PlainCache.service     : 캐시 서비스 인스턴스 접근
+- PlainCache.stats()        : 캐시 통계 확인
+- PlainCache.clear()        : 모든 캐시 삭제
+- PlainCache.cleanup()      : 삭제된 데이터 캐시 정리
+- PlainCache.forceRefresh() : 전체 캐시 강제 새로고침
+- PlainCache.service        : 캐시 서비스 인스턴스 접근
 
 캐시 전략:
 - SHORT (30초): 실시간 데이터 (게시물 상세, 댓글)
 - MEDIUM (5분): 목록 데이터 (스토리/라운지 목록)
 - LONG (30분): 안정적인 데이터
 - VERY_LONG (1시간): 설정, 태그 등
+
+💡 문제 해결:
+삭제된 게시물이 여전히 보인다면: PlainCache.cleanup()
+캐시 문제가 계속 발생한다면: PlainCache.forceRefresh()
 
 캐시는 브라우저 메모리에 저장되며 페이지 새로고침 시 초기화됩니다.
     `)

@@ -48,25 +48,35 @@ const Header: React.FC = () => {
 
   // 스크롤 위치 감지
   useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+    
     const handleScroll = () => {
-      // 스토리 디테일 페이지에서만 동작
-      if (location.pathname.includes('/story/') && !location.pathname.includes('/story/new') && !location.pathname.includes('/edit')) {
-        const scrollTop = window.scrollY;
-        const documentHeight = document.documentElement.scrollHeight - window.innerHeight;
-        const scrollPercentage = (scrollTop / documentHeight) * 100;
-        
-        setIsScrolled(scrollTop > 750); // 썸네일 높이(800px) 근처에서 변경
-        setScrollProgress(Math.min(scrollPercentage, 100));
-      } else {
-        setIsScrolled(false);
-        setScrollProgress(0);
-      }
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        // 스토리 디테일 페이지에서만 동작
+        if (location.pathname.includes('/story/') && !location.pathname.includes('/story/new') && !location.pathname.includes('/edit')) {
+          const scrollTop = window.scrollY;
+          const documentHeight = document.documentElement.scrollHeight - window.innerHeight;
+          const scrollPercentage = (scrollTop / documentHeight) * 100;
+          
+          console.log('📊 Header scroll debug:', { scrollTop, threshold: 750, isScrolled: scrollTop > 750 });
+          
+          setIsScrolled(scrollTop > 750); // 썸네일 높이(800px) 근처에서 변경
+          setScrollProgress(Math.min(scrollPercentage, 100));
+        } else {
+          setIsScrolled(false);
+          setScrollProgress(0);
+        }
+      }, 16); // ~60fps
     };
 
-    window.addEventListener('scroll', handleScroll);
+    window.addEventListener('scroll', handleScroll, { passive: true });
     handleScroll(); // 초기 실행
 
-    return () => window.removeEventListener('scroll', handleScroll);
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      clearTimeout(timeoutId);
+    };
   }, [location.pathname]);
 
   const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path);
@@ -204,7 +214,9 @@ const Header: React.FC = () => {
         position="sticky" 
         top={0} 
         zIndex={200}
-        transition="background 0.3s ease"
+        transition="all 0.3s ease"
+        backdropFilter={isStoryDetailPage && !isScrolled ? "none" : "blur(8px)"}
+        borderBottom={isStoryDetailPage && isScrolled ? `1px solid ${colorMode === 'dark' ? '#4d4d59' : '#e4e4e5'}` : "none"}
       >
       <Flex
         maxW="1200px"

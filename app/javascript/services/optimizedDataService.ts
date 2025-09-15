@@ -9,6 +9,7 @@ import {
   interactionService, 
   userService 
 } from './supabaseDataService';
+import { retryWithBackoff, LastKnownGoodDataManager } from '../utils/connectionUtils';
 
 // 배치 요청을 위한 대기열
 class BatchQueue {
@@ -131,11 +132,11 @@ const batchQueue = new BatchQueue();
 
 // 최적화된 스토리 서비스
 export const optimizedStoryService = {
-  // 캐시를 활용한 스토리 목록 조회
-  async getAll(page = 1, limit = 20, forceRefresh = false) {
-    console.log('📚 최적화된 스토리 목록 조회:', { page, limit, forceRefresh });
+  // 캐시를 활용한 스토리 목록 조회 (이미지 최적화 포함)
+  async getAll(page = 1, limit = 20, forceRefresh = false, prioritizeNoImage = false) {
+    console.log('📚 최적화된 스토리 목록 조회:', { page, limit, forceRefresh, prioritizeNoImage });
     
-    const cacheKey = { page, limit };
+    const cacheKey = { page, limit, prioritizeNoImage };
     
     // 캐시 확인
     if (!forceRefresh) {
@@ -146,9 +147,21 @@ export const optimizedStoryService = {
       }
     }
     
-    // API 호출
+    // API 호출 (재시도 메커니즘 포함)
     console.log('🌐 스토리 API 호출 중...');
-    const result = await storyService.getAll(page, limit);
+    let result = await storyService.getAll(page, limit); // storyService 내부에 이미 재시도 메커니즘 적용됨
+    
+    // 이미지 로딩 최적화: 이미지 없는 포스트를 우선 배치
+    if (prioritizeNoImage && result.stories) {
+      const withoutImages = result.stories.filter((story: any) => !story.image_url);
+      const withImages = result.stories.filter((story: any) => story.image_url);
+      
+      result.stories = [...withoutImages, ...withImages];
+      console.log('🖼️ 이미지 없는 포스트 우선 정렬 완료:', {
+        withoutImages: withoutImages.length,
+        withImages: withImages.length
+      });
+    }
     
     // 캐시 저장
     cacheService.setStories(cacheKey, result);
@@ -207,11 +220,11 @@ export const optimizedStoryService = {
 
 // 최적화된 라운지 서비스
 export const optimizedLoungeService = {
-  // 캐시를 활용한 라운지 목록 조회
-  async getAll(page = 1, limit = 20, type?: string, forceRefresh = false) {
-    console.log('🏛️ 최적화된 라운지 목록 조회:', { page, limit, type, forceRefresh });
+  // 캐시를 활용한 라운지 목록 조회 (성능 최적화 포함)
+  async getAll(page = 1, limit = 20, type?: string, forceRefresh = false, prioritizeNoImage = false) {
+    console.log('🏛️ 최적화된 라운지 목록 조회:', { page, limit, type, forceRefresh, prioritizeNoImage });
     
-    const cacheKey = { page, limit, type };
+    const cacheKey = { page, limit, type, prioritizeNoImage };
     
     // 캐시 확인
     if (!forceRefresh) {
@@ -222,9 +235,30 @@ export const optimizedLoungeService = {
       }
     }
     
-    // API 호출
+    // API 호출 (재시도 메커니즘 포함)
     console.log('🌐 라운지 API 호출 중...');
-    const result = await loungeService.getAll(page, limit, type);
+    let result = await loungeService.getAll(page, limit, type); // loungeService 내부에 이미 재시도 메커니즘 적용됨
+    
+    // 성능 최적화: 텍스트 기반 포스트를 우선 정렬하여 빠른 렌더링
+    if (prioritizeNoImage && result.posts) {
+      // 이미지가 포함된 컨텐츠와 텍스트만 있는 컨텐츠 분리
+      const textOnlyPosts = result.posts.filter((post: any) => {
+        if (!post.content) return true;
+        // HTML 내 이미지 태그 확인
+        return !/<img[^>]+>/i.test(post.content) && !post.image_url;
+      });
+      
+      const postsWithImages = result.posts.filter((post: any) => {
+        if (!post.content) return false;
+        return /<img[^>]+>/i.test(post.content) || post.image_url;
+      });
+      
+      result.posts = [...textOnlyPosts, ...postsWithImages];
+      console.log('📝 텍스트 우선 포스트 정렬 완료:', {
+        textOnly: textOnlyPosts.length,
+        withImages: postsWithImages.length
+      });
+    }
     
     // 캐시 저장
     cacheService.setLoungePosts(cacheKey, result);
@@ -237,9 +271,15 @@ export const optimizedLoungeService = {
   async getById(id: number, preload = false) {
     console.log('📄 최적화된 라운지 상세 조회:', { id, preload });
     
-    // 캐시 확인
+    // 캐시 확인 (단, 삭제된 글일 수도 있으므로 캐시도 검증 필요)
     const cached = cacheService.getPost('lounge', id);
     if (cached && !preload) {
+      // 캐시된 데이터가 삭제된 글인지 확인
+      if (cached === null || (cached && cached.deleted)) {
+        console.log('🗑️ 캐시된 데이터가 삭제된 글임을 확인');
+        cacheService.delete(`lounge:${id}`); // 캐시에서 제거
+        return null;
+      }
       console.log('💨 캐시된 라운지 상세 데이터 사용');
       return cached;
     }
@@ -247,6 +287,15 @@ export const optimizedLoungeService = {
     // API 호출
     console.log('🌐 라운지 상세 API 호출 중...');
     const result = await loungeService.getById(id);
+    
+    // 삭제된 글 체크
+    if (!result || result === null) {
+      console.log('🗑️ 삭제된 라운지 글 감지:', id);
+      // 관련 캐시 무효화
+      cacheService.delete(`lounge:${id}`);
+      cacheService.deleteByPattern(`comments:lounge:${id}`);
+      return null;
+    }
     
     // 캐시 저장
     cacheService.setPost('lounge', id, result);

@@ -240,7 +240,15 @@ const Comment: React.FC<CommentProps> = ({
               )}
             </HStack>
           </HStack>
-          <Text fontSize="sm" color={colorMode === 'dark' ? '#c3c3c6' : '#4d4d59'} lineHeight="1.6">
+          <Text 
+            fontSize="sm" 
+            color={colorMode === 'dark' ? '#c3c3c6' : '#4d4d59'} 
+            lineHeight="1.6"
+            wordBreak="break-word"
+            whiteSpace="pre-wrap"
+            maxW="100%"
+            overflowWrap="break-word"
+          >
             {comment.content}
           </Text>
           
@@ -290,24 +298,40 @@ const Comment: React.FC<CommentProps> = ({
             </HStack>
           )}
           
-          <Textarea
-            placeholder={isLoggedIn ? "답글을 입력하세요..." : "답글을 입력하세요..."}
-            value={replyContent}
-            onChange={(e) => setReplyContent(e.target.value)}
-            size="sm"
-            rows={2}
-            bg={colorMode === 'dark' ? '#3c3c47' : '#e4e4e5'}
-            border={colorMode === 'dark' ? '1px solid #4d4d59' : '1px solid #9e9ea4'}
-            color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}
-            _placeholder={{
-              color: colorMode === 'dark' ? '#7e7e87' : '#9e9ea4'
-            }}
-            _focus={{ 
-              bg: colorMode === 'dark' ? '#3c3c47' : 'white',
-              borderColor: 'brand.500',
-              boxShadow: '0 0 0 1px var(--chakra-colors-brand-500)'
-            }}
-          />
+          <VStack align="stretch" spacing={2}>
+            <Textarea
+              placeholder={isLoggedIn ? "답글을 입력하세요..." : "답글을 입력하세요..."}
+              value={replyContent}
+              onChange={(e) => {
+                if (e.target.value.length <= 500) {
+                  setReplyContent(e.target.value);
+                }
+              }}
+              size="sm"
+              rows={2}
+              maxLength={500}
+              bg={colorMode === 'dark' ? '#3c3c47' : '#e4e4e5'}
+              border={colorMode === 'dark' ? '1px solid #4d4d59' : '1px solid #9e9ea4'}
+              color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}
+              _placeholder={{
+                color: colorMode === 'dark' ? '#7e7e87' : '#9e9ea4'
+              }}
+              _focus={{ 
+                bg: colorMode === 'dark' ? '#3c3c47' : 'white',
+                borderColor: 'brand.500',
+                boxShadow: '0 0 0 1px var(--chakra-colors-brand-500)'
+              }}
+              wordBreak="break-word"
+              whiteSpace="pre-wrap"
+            />
+            <Text 
+              fontSize="xs" 
+              color={replyContent.length > 450 ? 'red.500' : colorMode === 'dark' ? '#7e7e87' : '#9e9ea4'}
+              textAlign="right"
+            >
+              {replyContent.length}/500자
+            </Text>
+          </VStack>
           
           <HStack justify="flex-end">
             <Button
@@ -361,12 +385,28 @@ const Comment: React.FC<CommentProps> = ({
             <VStack spacing={4}>
               <FormControl>
                 <FormLabel>내용</FormLabel>
-                <Textarea
-                  value={editContent}
-                  onChange={(e) => setEditContent(e.target.value)}
-                  placeholder="수정할 내용을 입력하세요"
-                  rows={4}
-                />
+                <VStack align="stretch" spacing={2}>
+                  <Textarea
+                    value={editContent}
+                    onChange={(e) => {
+                      if (e.target.value.length <= 1000) {
+                        setEditContent(e.target.value);
+                      }
+                    }}
+                    placeholder="수정할 내용을 입력하세요"
+                    rows={4}
+                    maxLength={1000}
+                    wordBreak="break-word"
+                    whiteSpace="pre-wrap"
+                  />
+                  <Text 
+                    fontSize="xs" 
+                    color={editContent.length > 900 ? 'red.500' : 'gray.500'}
+                    textAlign="right"
+                  >
+                    {editContent.length}/1000자
+                  </Text>
+                </VStack>
               </FormControl>
               {comment.isGuest && (
                 <FormControl>
@@ -595,28 +635,49 @@ export const CommentForm: React.FC<CommentFormProps> = ({
         </HStack>
       )}
       
-      <Textarea
-        placeholder={isLoggedIn ? `${currentUserName}님, 댓글을 입력하세요. (Ctrl+Enter로 빠른 등록)` : "댓글을 입력하세요. (Ctrl+Enter로 빠른 등록)"}
-        value={content}
-        onChange={(e) => setContent(e.target.value)}
-        onKeyDown={handleKeyDown}
-        minH="100px"
-        resize="vertical"
-        bg={colorMode === 'dark' ? '#3c3c47' : '#e4e4e5'}
-        border={colorMode === 'dark' ? '1px solid #4d4d59' : '1px solid #9e9ea4'}
-        color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}
-        _placeholder={{
-          color: colorMode === 'dark' ? '#7e7e87' : '#9e9ea4'
-        }}
-        _focus={{ 
-          bg: colorMode === 'dark' ? '#3c3c47' : 'white',
-          borderColor: 'brand.500',
-          boxShadow: '0 0 0 1px var(--chakra-colors-brand-500)'
-        }}
-        _hover={{
-          borderColor: colorMode === 'dark' ? '#626269' : '#7e7e87'
-        }}
-      />
+      <VStack align="stretch" spacing={2}>
+        <Textarea
+          placeholder={isLoggedIn ? `${currentUserName}님, 댓글을 입력하세요. (Ctrl+Enter로 빠른 등록)` : "댓글을 입력하세요. (Ctrl+Enter로 빠른 등록)"}
+          value={content}
+          onChange={(e) => {
+            if (e.target.value.length <= 1000) {
+              setContent(e.target.value);
+            }
+          }}
+          onKeyDown={handleKeyDown}
+          minH="100px"
+          maxH="300px"
+          resize="vertical"
+          maxLength={1000}
+          bg={colorMode === 'dark' ? '#3c3c47' : '#e4e4e5'}
+          border={colorMode === 'dark' ? '1px solid #4d4d59' : '1px solid #9e9ea4'}
+          color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}
+          _placeholder={{
+            color: colorMode === 'dark' ? '#7e7e87' : '#9e9ea4'
+          }}
+          _focus={{ 
+            bg: colorMode === 'dark' ? '#3c3c47' : 'white',
+            borderColor: 'brand.500',
+            boxShadow: '0 0 0 1px var(--chakra-colors-brand-500)'
+          }}
+          _hover={{
+            borderColor: colorMode === 'dark' ? '#626269' : '#7e7e87'
+          }}
+          wordBreak="break-word"
+          whiteSpace="pre-wrap"
+        />
+        <HStack justify="space-between">
+          <Text 
+            fontSize="xs" 
+            color={content.length > 900 ? 'red.500' : colorMode === 'dark' ? '#7e7e87' : '#9e9ea4'}
+          >
+            {content.length}/1000자
+          </Text>
+          <Text fontSize="xs" color={colorMode === 'dark' ? '#7e7e87' : '#9e9ea4'}>
+            Ctrl+Enter로 빠른 등록
+          </Text>
+        </HStack>
+      </VStack>
       <HStack justify="flex-end">
         <Button
           variant="outline"

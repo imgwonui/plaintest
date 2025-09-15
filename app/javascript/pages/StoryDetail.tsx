@@ -26,6 +26,7 @@ import Card from '../components/Card';
 import { CommentList, CommentForm } from '../components/Comment';
 import EmptyState from '../components/EmptyState';
 import AdminHint from '../components/AdminHint';
+import { PostDetailSkeleton } from '../components/LoadingOptimizer';
 import SEOHead from '../components/SEOHead';
 import { ArticleJsonLd, BreadcrumbJsonLd } from '../components/JsonLd';
 import { useAuth } from '../contexts/AuthContext';
@@ -51,6 +52,8 @@ const StoryDetail: React.FC = () => {
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [likeCount, setLikeCount] = useState(0);
   const [scrapCount, setScrapCount] = useState(0);
+  const [isLiking, setIsLiking] = useState(false); // 좋아요 처리 중 상태
+  const [isBookmarking, setIsBookmarking] = useState(false); // 북마크 처리 중 상태
   const [headings, setHeadings] = useState<Array<{id: string, text: string, level: number}>>([]);
   const [activeHeading, setActiveHeading] = useState<string>('');
   const contentRef = useRef<HTMLDivElement>(null);
@@ -61,9 +64,20 @@ const StoryDetail: React.FC = () => {
     const loadStoryData = async () => {
       try {
         setIsLoading(true);
+        // 일정 시간 동안 로딩 상태 유지 (최소 500ms)
+        const startTime = Date.now();
         
         // 스토리 데이터 로드
         const foundStory = await optimizedStoryService.getById(storyId, true); // 프리로딩 활성화
+        
+        // 최소 로딩 시간 보장하여 스켈레톤 UI가 보이도록
+        const elapsedTime = Date.now() - startTime;
+        const minLoadingTime = 500; // 최소 500ms 로딩
+        
+        if (elapsedTime < minLoadingTime) {
+          await new Promise(resolve => setTimeout(resolve, minLoadingTime - elapsedTime));
+        }
+        
         if (!foundStory) {
           toast({
             title: "스토리를 찾을 수 없습니다",
@@ -151,12 +165,32 @@ const StoryDetail: React.FC = () => {
       return;
     }
 
+    // 이미 처리 중이면 무시
+    if (isLiking) {
+      console.log('좋아요 처리 중이므로 요청 무시');
+      return;
+    }
+
     try {
+      setIsLiking(true);
+      console.log('🔄 좋아요 처리 시작, 현재 상태:', { isLiked, likeCount });
+      console.log('🔍 디버그 정보:', { 
+        userId: user.id, 
+        userIdType: typeof user.id,
+        storyId, 
+        storyIdType: typeof storyId,
+        postType: 'story'
+      });
+      
       const result = await interactionService.toggleLike(user.id, storyId, 'story');
+      console.log('✅ 좋아요 처리 결과:', result);
       
       if (result.action === 'added') {
         setIsLiked(true);
-        setLikeCount(prev => prev + 1);
+        setLikeCount(prev => {
+          console.log('➕ 좋아요 개수 증가:', prev, '→', prev + 1);
+          return prev + 1;
+        });
         toast({
           title: "좋아요를 눌렀습니다",
           status: "success",
@@ -164,7 +198,10 @@ const StoryDetail: React.FC = () => {
         });
       } else {
         setIsLiked(false);
-        setLikeCount(prev => prev - 1);
+        setLikeCount(prev => {
+          console.log('➖ 좋아요 개수 감소:', prev, '→', Math.max(0, prev - 1));
+          return Math.max(0, prev - 1); // 음수 방지
+        });
         toast({
           title: "좋아요를 취소했습니다",
           status: "success",
@@ -172,13 +209,15 @@ const StoryDetail: React.FC = () => {
         });
       }
     } catch (error) {
-      console.error('좋아요 처리 실패:', error);
+      console.error('❌ 좋아요 처리 실패:', error);
       toast({
         title: "오류가 발생했습니다",
         description: "잠시 후 다시 시도해주세요",
         status: "error",
         duration: 3000,
       });
+    } finally {
+      setIsLiking(false);
     }
   };
 
@@ -193,12 +232,32 @@ const StoryDetail: React.FC = () => {
       return;
     }
 
+    // 이미 처리 중이면 무시
+    if (isBookmarking) {
+      console.log('북마크 처리 중이므로 요청 무시');
+      return;
+    }
+
     try {
+      setIsBookmarking(true);
+      console.log('🔄 북마크 처리 시작, 현재 상태:', { isBookmarked, scrapCount });
+      console.log('🔍 북마크 디버그 정보:', { 
+        userId: user.id, 
+        userIdType: typeof user.id,
+        storyId, 
+        storyIdType: typeof storyId,
+        postType: 'story'
+      });
+      
       const result = await interactionService.toggleScrap(user.id, storyId, 'story');
+      console.log('✅ 북마크 처리 결과:', result);
       
       if (result.action === 'added') {
         setIsBookmarked(true);
-        setScrapCount(prev => prev + 1);
+        setScrapCount(prev => {
+          console.log('➕ 북마크 개수 증가:', prev, '→', prev + 1);
+          return prev + 1;
+        });
         toast({
           title: "북마크에 추가했습니다",
           status: "success",
@@ -206,7 +265,10 @@ const StoryDetail: React.FC = () => {
         });
       } else {
         setIsBookmarked(false);
-        setScrapCount(prev => prev - 1);
+        setScrapCount(prev => {
+          console.log('➖ 북마크 개수 감소:', prev, '→', Math.max(0, prev - 1));
+          return Math.max(0, prev - 1); // 음수 방지
+        });
         toast({
           title: "북마크를 해제했습니다",
           status: "success",
@@ -214,13 +276,15 @@ const StoryDetail: React.FC = () => {
         });
       }
     } catch (error) {
-      console.error('북마크 처리 실패:', error);
+      console.error('❌ 북마크 처리 실패:', error);
       toast({
         title: "오류가 발생했습니다",
         description: "잠시 후 다시 시도해주세요",
         status: "error",
         duration: 3000,
       });
+    } finally {
+      setIsBookmarking(false);
     }
   };
   
@@ -498,14 +562,7 @@ const StoryDetail: React.FC = () => {
   if (isLoading) {
     return (
       <Container maxW="1200px" py={8}>
-        <VStack spacing={8}>
-          <Box w="100%" h="400px" bg={colorMode === 'dark' ? '#4d4d59' : '#e4e4e5'} borderRadius="md" />
-          <VStack spacing={4} w="100%">
-            <Box w="80%" h="40px" bg={colorMode === 'dark' ? '#4d4d59' : '#e4e4e5'} borderRadius="md" />
-            <Box w="60%" h="20px" bg={colorMode === 'dark' ? '#4d4d59' : '#e4e4e5'} borderRadius="md" />
-            <Box w="100%" h="200px" bg={colorMode === 'dark' ? '#4d4d59' : '#e4e4e5'} borderRadius="md" />
-          </VStack>
-        </VStack>
+        <PostDetailSkeleton />
       </Container>
     );
   }
@@ -967,6 +1024,7 @@ const StoryDetail: React.FC = () => {
             fontSize="lg"
             lineHeight="1.8"
             color={colorMode === 'dark' ? '#c3c3c6' : '#4d4d59'}
+            overflowY="auto"
             sx={{
               '& h1, & h2, & h3, & h4, & h5, & h6': {
                 fontWeight: '600',
@@ -1056,7 +1114,8 @@ const StoryDetail: React.FC = () => {
                 };
                 
                 if (isHTML) {
-                  // HTML 콘텐츠 - H1, H2 태그에 ID 추가
+                  // HTML 콘텐츠 - H1, H2 태그에 ID 추가 및 형광펜 최적화
+                  // 형광펜 배경색이 밝기 때문에 어두운 텍스트가 더 잘 보임
                   return content
                     .replace(/background-color:\s*rgb\(254,\s*240,\s*138\)/g, 'background-color: #fef08a; color: #1f2937')
                     .replace(/background-color:\s*rgb\(187,\s*247,\s*208\)/g, 'background-color: #bbf7d0; color: #1f2937')
@@ -1072,7 +1131,8 @@ const StoryDetail: React.FC = () => {
                       return `<h2 id="${id}">${text}</h2>`;
                     });
                 } else {
-                  // 마크다운 콘텐츠면 변환
+                  // 마크다운 콘텐츠면 변환 - 형광펜 최적화
+                  // 형광펜 배경색이 밝기 때문에 어두운 텍스트가 더 잘 보임
                   return content
                     .replace(/==(.*?)==/g, '<span style="background-color: #fef08a; color: #1f2937; padding: 2px 4px; border-radius: 3px;">$1</span>')
                     .replace(/==green\[(.*?)\]==/g, '<span style="background-color: #bbf7d0; color: #1f2937; padding: 2px 4px; border-radius: 3px;">$1</span>')
@@ -1108,6 +1168,9 @@ const StoryDetail: React.FC = () => {
               colorScheme={isLiked ? "red" : "gray"}
               size="md"
               onClick={handleLike}
+              isLoading={isLiking}
+              loadingText={isLiked ? "취소 중..." : "좋아요 중..."}
+              disabled={isLiking || isBookmarking}
             >
               좋아요 {likeCount}
             </Button>
@@ -1118,6 +1181,9 @@ const StoryDetail: React.FC = () => {
               colorScheme={isBookmarked ? "yellow" : "gray"}
               size="md"
               onClick={handleBookmark}
+              isLoading={isBookmarking}
+              loadingText={isBookmarked ? "해제 중..." : "북마크 중..."}
+              disabled={isBookmarking || isLiking}
             >
               북마크 {scrapCount}
             </Button>
@@ -1176,6 +1242,8 @@ const StoryDetail: React.FC = () => {
                     size="md"
                     borderRadius="full"
                     onClick={handleBookmark}
+                    isLoading={isBookmarking}
+                    disabled={isBookmarking || isLiking}
                   />
                 </Tooltip>
               </VStack>
