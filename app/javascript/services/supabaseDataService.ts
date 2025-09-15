@@ -647,30 +647,23 @@ export const storyService = {
   // 모든 스토리 조회
   async getAll(page = 1, limit = 20) {
     try {
+      console.log('📚 스토리 조회 시작:', { page, limit });
       const offset = (page - 1) * limit;
       
-      const { data, error, count } = await supabase
+      const { data, error } = await supabase
         .from('stories')
-        .select(`
-          *,
-          author_verified:users!stories_author_id_fkey(is_verified)
-        `, { count: 'exact' })
-        .order('published_at', { ascending: false })
+        .select('*')
+        .order('created_at', { ascending: false })
         .range(offset, offset + limit - 1);
 
       if (error) throw error;
       
-      // author_verified 필드를 평면화
-      const stories = (data || []).map(story => ({
-        ...story,
-        author_verified: story.author_verified?.is_verified || false
-      }));
-      
+      console.log('✅ 스토리 조회 성공:', data?.length || 0, '개');
       return {
-        stories,
-        total: count || 0,
+        stories: data || [],
+        total: data?.length || 0,
         page,
-        totalPages: Math.ceil((count || 0) / limit)
+        totalPages: Math.ceil((data?.length || 0) / limit)
       };
     } catch (error) {
       console.error('getAll stories 에러:', error);
@@ -683,10 +676,7 @@ export const storyService = {
     try {
       const { data, error } = await supabase
         .from('stories')
-        .select(`
-          *,
-          author_verified:users!stories_author_id_fkey(is_verified)
-        `)
+        .select('*')
         .eq('id', id)
         .single();
 
@@ -695,13 +685,7 @@ export const storyService = {
       // 조회수 증가
       await this.incrementViewCount(id);
       
-      // author_verified 필드를 평면화
-      const story = {
-        ...data,
-        author_verified: data.author_verified?.is_verified || false
-      };
-      
-      return story;
+      return data;
     } catch (error) {
       console.error('getById story 에러:', error);
       throw error;
@@ -1005,66 +989,36 @@ export const loungeService = {
   // 모든 라운지 포스트 조회
   async getAll(page = 1, limit = 20, type?: string) {
     try {
+      console.log('🏛️ 라운지 조회 시작:', { page, limit, type });
       const offset = (page - 1) * limit;
       
-      // 기본 데이터 가져오기
       let query = supabase
         .from('lounge_posts')
-        .select('*', { count: 'exact' });
+        .select('*');
 
       if (type) {
         query = query.eq('type', type);
       }
 
-      const { data, error, count } = await query
+      const { data, error } = await query
         .order('created_at', { ascending: false })
         .range(offset, offset + limit - 1);
 
       if (error) throw error;
       
-      // 각 포스트의 실제 좋아요/댓글 수 계산
-      const postsWithCounts = await Promise.all(
-        (data || []).map(async (post) => {
-          try {
-            // 실제 좋아요 수 계산
-            const { count: actualLikes } = await supabase
-              .from('likes')
-              .select('*', { count: 'exact', head: true })
-              .eq('post_id', post.id)
-              .eq('post_type', 'lounge');
-
-            // 실제 댓글 수 계산
-            const { count: actualComments } = await supabase
-              .from('comments')
-              .select('*', { count: 'exact', head: true })
-              .eq('post_id', post.id)
-              .eq('post_type', 'lounge');
-
-            // 실제 북마크 수 계산  
-            const { count: actualScraps } = await supabase
-              .from('scraps')
-              .select('*', { count: 'exact', head: true })
-              .eq('post_id', post.id)
-              .eq('post_type', 'lounge');
-
-            return {
-              ...post,
-              like_count: actualLikes || 0,
-              comment_count: actualComments || 0,
-              scrap_count: actualScraps || 0
-            };
-          } catch (err) {
-            console.error('포스트 카운트 계산 에러:', err);
-            return post; // 에러 시 원본 데이터 반환
-          }
-        })
-      );
+      console.log('✅ 라운지 조회 성공:', data?.length || 0, '개');
+      const postsWithCounts = (data || []).map(post => ({
+        ...post,
+        like_count: post.like_count || 0,
+        comment_count: post.comment_count || 0,
+        scrap_count: post.scrap_count || 0
+      }));
       
       return {
         posts: postsWithCounts,
-        total: count || 0,
+        total: postsWithCounts.length,
         page,
-        totalPages: Math.ceil((count || 0) / limit)
+        totalPages: Math.ceil(postsWithCounts.length / limit)
       };
     } catch (error) {
       console.error('getAll lounge posts 에러:', error);
@@ -1150,37 +1104,14 @@ export const loungeService = {
 
       if (error) throw error;
       
-      // 실제 좋아요/댓글 수 계산
-      const [
-        { count: actualLikes },
-        { count: actualComments },
-        { count: actualScraps }
-      ] = await Promise.all([
-        supabase
-          .from('likes')
-          .select('*', { count: 'exact', head: true })
-          .eq('post_id', id)
-          .eq('post_type', 'lounge'),
-        supabase
-          .from('comments')
-          .select('*', { count: 'exact', head: true })
-          .eq('post_id', id)
-          .eq('post_type', 'lounge'),
-        supabase
-          .from('scraps')
-          .select('*', { count: 'exact', head: true })
-          .eq('post_id', id)
-          .eq('post_type', 'lounge')
-      ]);
-
       // 조회수 증가
       await this.incrementViewCount(id);
       
       return {
         ...data,
-        like_count: actualLikes || 0,
-        comment_count: actualComments || 0,
-        scrap_count: actualScraps || 0
+        like_count: data.like_count || 0,
+        comment_count: data.comment_count || 0,
+        scrap_count: data.scrap_count || 0
       };
     } catch (error) {
       console.error('getById lounge post 에러:', error);
@@ -1369,7 +1300,7 @@ export const loungeService = {
 // ===========================================================================
 
 export const commentService = {
-  // 포스트별 댓글 조회 (계층구조)
+  // 포스트별 댓글 조회
   async getByPost(postId: number, postType: 'story' | 'lounge') {
     try {
       const { data, error } = await supabase
@@ -1891,7 +1822,7 @@ export const interactionService = {
   // 좋아요 개수 조회 (현재 사용자만)
   async getLikeCount(postId: number, postType: 'story' | 'lounge', userId?: string): Promise<number> {
     try {
-      console.log('🔢 좋아요 개수 조회 중:', { postId, postType, userId }); // Added for debugging
+      console.log('🔢 좋아요 개수 조회 중:', { postId, postType, userId });
       
       if (userId) {
         // 현재 사용자의 좋아요만 조회
@@ -1908,7 +1839,7 @@ export const interactionService = {
         }
         
         const actualCount = count || 0;
-        console.log('✅ 현재 사용자 좋아요 개수:', actualCount); // Added for debugging
+        console.log('✅ 현재 사용자 좋아요 개수:', actualCount);
         return actualCount;
       } else {
         // 전체 좋아요 개수 조회
@@ -1924,7 +1855,7 @@ export const interactionService = {
         }
         
         const actualCount = count || 0;
-        console.log('✅ 전체 좋아요 개수:', actualCount); // Added for debugging
+        console.log('✅ 전체 좋아요 개수:', actualCount);
         return actualCount;
       }
     } catch (error) {

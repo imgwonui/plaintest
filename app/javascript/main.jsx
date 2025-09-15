@@ -7,6 +7,7 @@ import theme from './theme';
 import AppShell from './components/AppShell';
 import { AuthProvider } from './contexts/AuthContext';
 import { resetAllData, getDataStats } from './services/sessionDataService';
+import { initializePerformanceSystem } from './utils/performanceInit';
 
 // Pages
 import Home from './pages/Home';
@@ -471,6 +472,11 @@ API 연결만 하면 바로 운영 가능합니다!
     };
   });
   
+  // 성능 최적화 시스템 초기화
+  console.log('⚡ Plain 성능 최적화 시스템을 초기화합니다...');
+  initializePerformanceSystem();
+  
   // 시작 시 안내 메시지  
   console.log('🚀 Plain 개발 모드가 시작되었습니다! Plain.info() 를 입력해서 도움말을 확인하세요.');
+  console.log('⚡ 성능 최적화가 활성화되었습니다! PlainCache.info() 및 PlainOptimized.info() 명령어를 확인하세요.');
 }

@@ -19,10 +19,12 @@ import { Link } from 'react-router-dom';
 import Card from '../components/Card';
 import EmptyState from '../components/EmptyState';
 import { CardSkeletonGrid } from '../components/LoadingSpinner';
+import { PostCardSkeleton, ListSkeleton } from '../components/LoadingOptimizer';
 import SEOHead from '../components/SEOHead';
 import { OrganizationJsonLd, WebSiteJsonLd } from '../components/JsonLd';
 import { WebAnalytics } from '../components/Analytics';
 import { storyService, loungeService, userService, testConnection } from '../services/supabaseDataService';
+import { optimizedStoryService, optimizedLoungeService } from '../services/optimizedDataService';
 import LevelBadge from '../components/UserLevel/LevelBadge';
 import { getUserDisplayLevel } from '../services/userLevelService';
 
@@ -42,10 +44,10 @@ const Home: React.FC = () => {
       try {
         setIsLoading(true);
         
-        // 스토리와 라운지 포스트를 병렬로 로드
+        // 최적화된 서비스로 스토리와 라운지 포스트를 병렬로 로드 (적절한 수량으로 조정)
         const [storiesData, loungeData] = await Promise.all([
-          storyService.getAll(1, 50), // 홈페이지용으로 50개까지
-          loungeService.getAll(1, 50)
+          optimizedStoryService.getAll(1, 10), // 홈페이지용으로 10개로 축소
+          optimizedLoungeService.getAll(1, 20)  // 라운지는 20개로 축소
         ]);
         
         setStories(storiesData.stories || []);
@@ -256,7 +258,7 @@ const Home: React.FC = () => {
           </HStack>
 
           {isLoading ? (
-            <CardSkeletonGrid count={6} />
+            <ListSkeleton count={6} type="post" />
           ) : latestStories.length > 0 ? (
             <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={6}>
               {latestStories.map((story) => (
@@ -295,7 +297,7 @@ const Home: React.FC = () => {
           </HStack>
 
           {isLoading ? (
-            <CardSkeletonGrid count={15} />
+            <ListSkeleton count={15} type="post" />
           ) : displayedLoungePosts.length > 0 ? (
             <>
               <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>

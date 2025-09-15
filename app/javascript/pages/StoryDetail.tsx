@@ -30,6 +30,7 @@ import SEOHead from '../components/SEOHead';
 import { ArticleJsonLd, BreadcrumbJsonLd } from '../components/JsonLd';
 import { useAuth } from '../contexts/AuthContext';
 import { storyService, commentService, interactionService, userService } from '../services/supabaseDataService';
+import { optimizedStoryService, optimizedCommentService, optimizedInteractionService } from '../services/optimizedDataService';
 import { formatDate } from '../utils/format';
 import { getTagById } from '../data/tags';
 
@@ -62,7 +63,7 @@ const StoryDetail: React.FC = () => {
         setIsLoading(true);
         
         // 스토리 데이터 로드
-        const foundStory = await storyService.getById(storyId);
+        const foundStory = await optimizedStoryService.getById(storyId, true); // 프리로딩 활성화
         if (!foundStory) {
           toast({
             title: "스토리를 찾을 수 없습니다",
@@ -95,7 +96,7 @@ const StoryDetail: React.FC = () => {
         }
         
         // 댓글 로드
-        const comments = await commentService.getByPost(storyId, 'story');
+        const comments = await optimizedCommentService.getByPost(storyId, 'story');
         // Supabase 댓글 데이터를 Comment 컴포넌트 형식으로 변환
         const transformedComments = (comments || []).map(comment => ({
           id: comment.id,
@@ -540,7 +541,7 @@ const StoryDetail: React.FC = () => {
       });
       
       // 댓글 목록 새로 로드
-      const updatedComments = await commentService.getByPost(storyId, 'story');
+      const updatedComments = await optimizedCommentService.getByPost(storyId, 'story');
       // Supabase 댓글 데이터를 Comment 컴포넌트 형식으로 변환
       const transformedComments = (updatedComments || []).map(comment => ({
         id: comment.id,
@@ -602,7 +603,7 @@ const StoryDetail: React.FC = () => {
       });
       
       // 댓글 목록 새로고침
-      const updatedComments = await commentService.getByPost(storyId, 'story');
+      const updatedComments = await optimizedCommentService.getByPost(storyId, 'story');
       // Supabase 댓글 데이터를 Comment 컴포넌트 형식으로 변환
       const transformedComments = (updatedComments || []).map(comment => ({
         id: comment.id,
@@ -651,7 +652,7 @@ const StoryDetail: React.FC = () => {
       await commentService.update(commentId, newContent, password);
       
       // 댓글 목록 새로고침
-      const updatedComments = await commentService.getByPost(storyId, 'story');
+      const updatedComments = await optimizedCommentService.getByPost(storyId, 'story');
       // Supabase 댓글 데이터를 Comment 컴포넌트 형식으로 변환
       const transformedComments = (updatedComments || []).map(comment => ({
         id: comment.id,
@@ -698,7 +699,7 @@ const StoryDetail: React.FC = () => {
       await commentService.delete(commentId, password);
       
       // 댓글 목록 새로고침
-      const updatedComments = await commentService.getByPost(storyId, 'story');
+      const updatedComments = await optimizedCommentService.getByPost(storyId, 'story');
       // Supabase 댓글 데이터를 Comment 컴포넌트 형식으로 변환
       const transformedComments = (updatedComments || []).map(comment => ({
         id: comment.id,

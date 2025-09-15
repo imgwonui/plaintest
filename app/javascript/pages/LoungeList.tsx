@@ -44,6 +44,7 @@ import { useAuth } from '../contexts/AuthContext';
 // 타입은 API 타입으로 교체 예정
 type LoungePost = any;
 import { loungeService, userService } from '../services/supabaseDataService';
+import { optimizedLoungeService } from '../services/optimizedDataService';
 import { getAllTags, getTagById } from '../data/tags';
 import TagSelector from '../components/TagSelector';
 import LevelBadge from '../components/UserLevel/LevelBadge';
@@ -83,7 +84,7 @@ const LoungeList: React.FC = () => {
         const response = await loungeService.getPopular(1, 100);
         posts = response.posts || [];
       } else {
-        const response = await loungeService.getAll(1, 100, typeFilter === 'all' ? undefined : typeFilter);
+        const response = await optimizedLoungeService.getAll(1, 50, typeFilter === 'all' ? undefined : typeFilter);
         posts = response.posts || [];
       }
       

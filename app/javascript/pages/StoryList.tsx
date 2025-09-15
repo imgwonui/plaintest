@@ -24,6 +24,7 @@ import EmptyState from '../components/EmptyState';
 import { CardSkeletonGrid } from '../components/LoadingSpinner';
 import SEOHead from '../components/SEOHead';
 import { storyService, userService } from '../services/supabaseDataService';
+import { optimizedStoryService } from '../services/optimizedDataService';
 import { useAuth } from '../contexts/AuthContext';
 import { getAllTags, getTagById } from '../data/tags';
 import TagSelector from '../components/TagSelector';
@@ -46,7 +47,7 @@ const StoryList: React.FC = () => {
     try {
       console.log('📖 스토리 목록 로드 시작...');
       setIsLoading(true);
-      const response = await storyService.getAll(1, 100); // 페이지네이션 나중에 추가
+      const response = await optimizedStoryService.getAll(1, 50); // 최적화된 서비스로 변경
       console.log('📖 스토리 서비스 응답:', response);
       setStories(response.stories || []);
       console.log('✅ 스토리 데이터 로드 성공:', response.stories?.length || 0, '개');

@@ -24,6 +24,7 @@ import SEOHead from '../components/SEOHead';
 import { QAPageJsonLd, BreadcrumbJsonLd } from '../components/JsonLd';
 import { useAuth } from '../contexts/AuthContext';
 import { loungeService, commentService, interactionService } from '../services/supabaseDataService';
+import { optimizedLoungeService, optimizedCommentService, optimizedInteractionService } from '../services/optimizedDataService';
 import { formatDate } from '../utils/format';
 import { getTagById } from '../data/tags';
 import LevelBadge from '../components/UserLevel/LevelBadge';
@@ -49,7 +50,7 @@ const LoungeDetail: React.FC = () => {
   useEffect(() => {
     const loadPost = async () => {
       try {
-        const foundPost = await loungeService.getById(postId);
+        const foundPost = await optimizedLoungeService.getById(postId, true); // 프리로딩 활성화
         if (foundPost) {
           setPost(foundPost);
           setLikeCount(foundPost.like_count || 0);
@@ -103,7 +104,7 @@ const LoungeDetail: React.FC = () => {
           }
           
           // 댓글 로드 (계층구조)
-          const comments = await commentService.getByPost(postId, 'lounge');
+          const comments = await optimizedCommentService.getByPost(postId, 'lounge');
           
           // 댓글 데이터를 컴포넌트 형식으로 변환
           const transformedComments = comments?.map((comment: any) => ({
@@ -272,7 +273,7 @@ const LoungeDetail: React.FC = () => {
       });
       
       // 댓글 목록 새로고침
-      const updatedComments = await commentService.getByPost(postId, 'lounge');
+      const updatedComments = await optimizedCommentService.getByPost(postId, 'lounge');
       
       // 댓글 데이터를 컴포넌트 형식으로 변환
       const transformedComments = updatedComments?.map((comment: any) => ({
@@ -330,7 +331,7 @@ const LoungeDetail: React.FC = () => {
       });
       
       // 댓글 목록 새로고침
-      const updatedComments = await commentService.getByPost(postId, 'lounge');
+      const updatedComments = await optimizedCommentService.getByPost(postId, 'lounge');
       
       // 댓글 데이터를 컴포넌트 형식으로 변환
       const transformedComments = updatedComments?.map((comment: any) => ({
@@ -377,7 +378,7 @@ const LoungeDetail: React.FC = () => {
       const updatedComment = await commentService.update(commentId, newContent, password);
       
       // 댓글 목록 새로고침
-      const updatedComments = await commentService.getByPost(postId, 'lounge');
+      const updatedComments = await optimizedCommentService.getByPost(postId, 'lounge');
       
       // 댓글 데이터를 컴포넌트 형식으로 변환
       const transformedComments = updatedComments?.map((comment: any) => ({
@@ -422,7 +423,7 @@ const LoungeDetail: React.FC = () => {
       await commentService.delete(commentId, password);
       
       // 댓글 목록 새로고침
-      const updatedComments = await commentService.getByPost(postId, 'lounge');
+      const updatedComments = await optimizedCommentService.getByPost(postId, 'lounge');
       
       // 댓글 데이터를 컴포넌트 형식으로 변환
       const transformedComments = updatedComments?.map((comment: any) => ({
