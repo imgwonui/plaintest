@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Container,
@@ -30,7 +30,77 @@ import { cacheService } from '../services/cacheService';
 import { formatDate } from '../utils/format';
 import { getTagById } from '../data/tags';
 import LevelBadge from '../components/UserLevel/LevelBadge';
-import { getUserDisplayLevel } from '../services/userLevelService';
+import { getDatabaseUserLevel } from '../services/databaseUserLevelService';
+
+// 게시글 작성자 실시간 레벨 표시 컴포넌트
+const PostAuthorLevel: React.FC<{ authorId: string }> = ({ authorId }) => {
+  const [authorLevel, setAuthorLevel] = useState(1);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // 초기 레벨 로드
+  useEffect(() => {
+    const loadLevel = async () => {
+      try {
+        setIsLoading(true);
+        const levelData = await getDatabaseUserLevel(authorId);
+        setAuthorLevel(levelData.level);
+      } catch (error) {
+        console.warn('게시글 작성자 레벨 로드 실패:', error);
+        setAuthorLevel(1);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (authorId) {
+      loadLevel();
+    }
+  }, [authorId]);
+
+  // 레벨업 이벤트 리스너
+  useEffect(() => {
+    const handleLevelUp = (event: CustomEvent) => {
+      if (event.detail.userId === authorId) {
+        console.log(`📈 게시글 작성자 레벨업 반영: ${authorId} LV${event.detail.oldLevel} → LV${event.detail.newLevel}`);
+        setAuthorLevel(event.detail.newLevel);
+      }
+    };
+
+    // 캐시 무효화 이벤트 리스너
+    const handleCacheInvalidated = (event: CustomEvent) => {
+      if (event.detail.userId === authorId) {
+        console.log(`🔄 게시글 작성자 캐시 무효화됨, 레벨 새로고침: ${authorId}`);
+        getDatabaseUserLevel(authorId).then(levelData => {
+          setAuthorLevel(levelData.level);
+        }).catch(error => {
+          console.warn('게시글 작성자 캐시 무효화 후 레벨 로드 실패:', error);
+        });
+      }
+    };
+
+    if (typeof window !== 'undefined' && authorId) {
+      window.addEventListener('userLevelUp', handleLevelUp as EventListener);
+      window.addEventListener('userCacheInvalidated', handleCacheInvalidated as EventListener);
+      return () => {
+        window.removeEventListener('userLevelUp', handleLevelUp as EventListener);
+        window.removeEventListener('userCacheInvalidated', handleCacheInvalidated as EventListener);
+      };
+    }
+  }, [authorId]);
+
+  if (isLoading) {
+    return <LevelBadge level={1} size="xs" variant="subtle" showIcon={true} />;
+  }
+
+  return (
+    <LevelBadge 
+      level={authorLevel} 
+      size="xs" 
+      variant="subtle"
+      showIcon={true}
+    />
+  );
+};
 
 const LoungeDetail: React.FC = () => {
   const { colorMode } = useColorMode();
@@ -50,6 +120,9 @@ const LoungeDetail: React.FC = () => {
   const [isLiking, setIsLiking] = useState(false); // 좋아요 처리 중 상태
   const [isBookmarking, setIsBookmarking] = useState(false); // 북마크 처리 중 상태
   const [isLoading, setIsLoading] = useState(true); // 로딩 상태
+  
+  // 게시글 본문을 참조하는 ref
+  const contentRef = useRef<HTMLDivElement>(null);
 
   // Supabase 데이터 로드
   useEffect(() => {
@@ -159,6 +232,87 @@ const LoungeDetail: React.FC = () => {
     
     loadPost();
   }, [postId, isLoggedIn, user, toast]);
+
+  // 게시글 본문 링크 클릭 이벤트 처리
+  useEffect(() => {
+    const setupLinkHandlers = () => {
+      if (!contentRef.current || !post) return;
+
+      const links = contentRef.current.querySelectorAll('a[href]');
+      console.log(`🔗 게시글 내 링크 ${links.length}개 감지됨`);
+
+      links.forEach((link) => {
+        const href = link.getAttribute('href');
+        if (!href) return;
+
+        // 기존 이벤트 리스너 제거 (중복 방지)
+        link.removeEventListener('click', handleLinkClick);
+        
+        // 새 이벤트 리스너 추가
+        link.addEventListener('click', handleLinkClick);
+        
+        // 링크 스타일 보장 (클릭 가능하다는 시각적 표시)
+        link.style.cursor = 'pointer';
+        link.style.textDecoration = 'underline';
+        link.style.color = colorMode === 'dark' ? '#A78BFA' : '#7A5AF8';
+        
+        console.log(`✅ 링크 이벤트 등록: ${href}`);
+      });
+    };
+
+    const handleLinkClick = (event: Event) => {
+      event.preventDefault();
+      const link = event.currentTarget as HTMLAnchorElement;
+      const href = link.getAttribute('href');
+      
+      if (!href) return;
+
+      console.log(`🖱️ 링크 클릭됨: ${href}`);
+
+      try {
+        // URL 유효성 검사
+        const url = new URL(href.startsWith('http') ? href : `https://${href}`);
+        
+        // 외부 링크인 경우 새 창에서 열기
+        if (url.hostname !== window.location.hostname) {
+          console.log(`🌐 외부 링크 감지, 새 창에서 열기: ${url.href}`);
+          window.open(url.href, '_blank', 'noopener,noreferrer');
+          
+          toast({
+            title: "링크가 새 창에서 열립니다",
+            status: "info",
+            duration: 2000,
+          });
+        } else {
+          // 내부 링크인 경우 React Router 사용
+          console.log(`🏠 내부 링크 감지, React Router로 이동: ${url.pathname}`);
+          navigate(url.pathname + url.search + url.hash);
+        }
+      } catch (error) {
+        // URL이 유효하지 않은 경우 그냥 새 창에서 열기 시도
+        console.warn(`⚠️ URL 파싱 실패, 그대로 새 창에서 열기 시도: ${href}`, error);
+        window.open(href, '_blank', 'noopener,noreferrer');
+      }
+    };
+
+    // 게시글이 로드된 후 링크 핸들러 설정
+    if (post && !isLoading) {
+      // DOM 업데이트를 기다린 후 실행
+      setTimeout(() => {
+        setupLinkHandlers();
+      }, 100);
+    }
+
+    // cleanup 함수
+    return () => {
+      if (contentRef.current) {
+        const links = contentRef.current.querySelectorAll('a[href]');
+        links.forEach((link) => {
+          link.removeEventListener('click', handleLinkClick);
+        });
+      }
+    };
+  }, [post, isLoading, colorMode, navigate, toast]);
 
   const handleLike = async () => {
     if (!isLoggedIn || !user) {
@@ -285,41 +439,92 @@ const LoungeDetail: React.FC = () => {
   const handleDelete = async () => {
     if (window.confirm('정말로 이 글을 삭제하시겠습니까?\n삭제된 글은 복구할 수 없습니다.')) {
       try {
+        console.log('🗑️ 라운지 포스트 삭제 시도 시작:', {
+          postId,
+          post: post,
+          userId: user?.id,
+          isAdmin: user?.isAdmin,
+          canDelete: user && (user?.isAdmin || post?.author_id === user.id || post?.author_name === user.name)
+        });
+        
+        // 권한 재확인
+        if (!user || (!user.isAdmin && post?.author_id !== user.id && post?.author_name !== user.name)) {
+          throw new Error('삭제 권한이 없습니다.');
+        }
+        
+        console.log('🔑 삭제 권한 확인됨, loungeService.delete 호출 중...');
         const success = await loungeService.delete(postId);
+        console.log('📊 loungeService.delete 결과:', success);
+        
         if (success) {
-          console.log('🗑️ 라운지 포스트 삭제 완료, 캐시 무효화 시작:', postId);
+          console.log('✅ 라운지 포스트 삭제 완료, 캐시 무효화 시작:', postId);
           
-          // 관련 캐시 무효화
+          // 관련 캐시 무효화 - 더 광범위하게
           cacheService.invalidatePost('lounge', postId);
-          
-          // 추가적으로 전체 라운지 목록 캐시도 무효화
           cacheService.deleteByPattern('lounge:*');
+          cacheService.deleteByPattern('optimized_lounge:*');
+          cacheService.deleteByPattern('home:*');
           
           // 사용자 프로필 캐시도 무효화
           if (user?.id) {
             cacheService.invalidateUser(user.id);
           }
           
-          // 홈 페이지 캐시도 무효화
-          cacheService.deleteByPattern('home:*');
+          // sessionStorage와 localStorage도 정리
+          try {
+            const sessionKeys = [];
+            for (let i = 0; i < sessionStorage.length; i++) {
+              const key = sessionStorage.key(i);
+              if (key && (key.includes('lounge') || key.includes('home'))) {
+                sessionKeys.push(key);
+              }
+            }
+            sessionKeys.forEach(key => sessionStorage.removeItem(key));
+            
+            const localKeys = [];
+            for (let i = 0; i < localStorage.length; i++) {
+              const key = localStorage.key(i);
+              if (key && (key.includes('lounge') || key.includes('home'))) {
+                localKeys.push(key);
+              }
+            }
+            localKeys.forEach(key => localStorage.removeItem(key));
+            
+            console.log('🧹 세션/로컬 스토리지 캐시 정리 완료');
+          } catch (cleanupError) {
+            console.warn('⚠️ 캐시 정리 중 오류:', cleanupError);
+          }
           
-          console.log('✅ 캐시 무효화 완료');
+          console.log('✅ 모든 캐시 무효화 완료');
           
           toast({
             title: '글이 삭제되었습니다',
+            description: '라운지 목록으로 이동합니다.',
             status: 'success',
             duration: 3000,
           });
-          navigate('/lounge');
+          
+          // 삭제 완료 후 라운지로 이동 (강제 새로고침 신호 포함)
+          navigate('/lounge', { 
+            state: { 
+              refresh: true, 
+              deleted: true,
+              deletedPostId: postId,
+              timestamp: Date.now() 
+            },
+            replace: true 
+          });
+          
         } else {
-          throw new Error('삭제 실패');
+          throw new Error('삭제 실패: 서버에서 false 반환');
         }
       } catch (error) {
-        console.error('글 삭제 실패:', error);
+        console.error('❌ 글 삭제 실패:', error);
         toast({
           title: '글 삭제 중 오류가 발생했습니다',
+          description: error instanceof Error ? error.message : '알 수 없는 오류',
           status: 'error',
-          duration: 3000,
+          duration: 5000,
         });
       }
     }
@@ -339,36 +544,145 @@ const LoungeDetail: React.FC = () => {
         guest_password: password // 실제로는 해시화해서 저장
       });
       
-      // 댓글 목록 새로고침
-      const updatedComments = await optimizedCommentService.getByPost(postId, 'lounge');
+      // 댓글 목록 강제 새로고침 (캐시 무시)
+      console.log('📝 댓글 작성 완료, 강력한 댓글 목록 새로고침 시작...');
+      console.log('📝 새로 생성된 댓글:', newComment);
       
-      // 댓글 데이터를 컴포넌트 형식으로 변환
-      const transformedComments = updatedComments?.map((comment: any) => ({
-        ...comment,
-        author: comment.author_name,
-        createdAt: comment.created_at,
-        isGuest: comment.is_guest,
-        guestPassword: comment.guest_password,
-        authorVerified: comment.author_verified,
-        parentId: comment.parent_id,
-        replies: comment.replies?.map((reply: any) => ({
-          ...reply,
-          author: reply.author_name,
-          createdAt: reply.created_at,
-          isGuest: reply.is_guest,
-          guestPassword: reply.guest_password,
-          authorVerified: reply.author_verified,
-          parentId: reply.parent_id
-        })) || []
-      })) || [];
+      // 1. 모든 관련 캐시 완전 무효화 (더 광범위하게)
+      if (typeof window !== 'undefined') {
+        // LocalStorage 캐시 무효화
+        const localKeys = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && (key.includes('comment') || key.includes('lounge') || key.includes(`post_${postId}`) || key.includes('cache'))) {
+            localKeys.push(key);
+          }
+        }
+        localKeys.forEach(key => {
+          localStorage.removeItem(key);
+          console.log(`💥 LocalStorage 캐시 삭제: ${key}`);
+        });
+        
+        // SessionStorage 캐시 무효화
+        const sessionKeys = [];
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const key = sessionStorage.key(i);
+          if (key && (key.includes('comment') || key.includes('lounge') || key.includes(`post_${postId}`) || key.includes('cache'))) {
+            sessionKeys.push(key);
+          }
+        }
+        sessionKeys.forEach(key => {
+          sessionStorage.removeItem(key);
+          console.log(`💥 SessionStorage 캐시 삭제: ${key}`);
+        });
+      }
       
-      setPostComments(transformedComments);
+      // 2. CacheService 캐시도 무효화
+      try {
+        cacheService.deleteByPattern('comment:*');
+        cacheService.deleteByPattern(`lounge:${postId}:*`);
+        cacheService.deleteByPattern('optimized_comment:*');
+        console.log('💥 CacheService 캐시 무효화 완료');
+      } catch (cacheError) {
+        console.warn('⚠️ CacheService 캐시 무효화 중 오류:', cacheError);
+      }
       
-      toast({
-        title: "댓글이 등록되었습니다",
-        status: "success",
-        duration: 2000,
-      });
+      // 3. 여러 번의 새로고침 시도 (확실하게)
+      let refreshAttempts = 0;
+      const maxAttempts = 3;
+      let updatedComments = null;
+      
+      while (refreshAttempts < maxAttempts && !updatedComments) {
+        refreshAttempts++;
+        console.log(`🔄 댓글 새로고침 시도 ${refreshAttempts}/${maxAttempts}`);
+        
+        // 각 시도마다 다른 딜레이
+        await new Promise(resolve => setTimeout(resolve, refreshAttempts * 500));
+        
+        try {
+          // 기본 서비스와 최적화된 서비스 둘 다 시도
+          updatedComments = await commentService.getByPost(postId, 'lounge', { forceRefresh: true });
+          
+          if (!updatedComments || updatedComments.length === 0) {
+            console.warn(`⚠️ 시도 ${refreshAttempts}: 댓글 목록이 비어있음, optimized 서비스로 재시도`);
+            updatedComments = await optimizedCommentService.getByPost(postId, 'lounge');
+          }
+          
+          console.log(`✅ 시도 ${refreshAttempts}: 댓글 ${updatedComments?.length || 0}개 로드됨`);
+          
+          // 새로 생성된 댓글이 포함되었는지 확인
+          if (updatedComments && newComment?.id) {
+            const foundNewComment = updatedComments.find(c => c.id === newComment.id);
+            if (foundNewComment) {
+              console.log('✅ 새로 생성된 댓글이 목록에 포함됨:', foundNewComment);
+              break;
+            } else {
+              console.warn(`⚠️ 새 댓글(ID: ${newComment.id})이 목록에 없음, 재시도 필요`);
+              if (refreshAttempts < maxAttempts) {
+                updatedComments = null; // 재시도를 위해 null로 설정
+              }
+            }
+          }
+        } catch (refreshError) {
+          console.error(`❌ 댓글 새로고침 시도 ${refreshAttempts} 실패:`, refreshError);
+          if (refreshAttempts === maxAttempts) {
+            throw refreshError; // 마지막 시도에서 실패하면 에러 throw
+          }
+        }
+      }
+      
+      // 4. 댓글 데이터를 컴포넌트 형식으로 변환
+      if (updatedComments) {
+        const transformedComments = updatedComments.map((comment: any) => ({
+          ...comment,
+          author: comment.author_name,
+          createdAt: comment.created_at,
+          isGuest: comment.is_guest,
+          guestPassword: comment.guest_password,
+          authorVerified: comment.author_verified,
+          parentId: comment.parent_id,
+          replies: comment.replies?.map((reply: any) => ({
+            ...reply,
+            author: reply.author_name,
+            createdAt: reply.created_at,
+            isGuest: reply.is_guest,
+            guestPassword: reply.guest_password,
+            authorVerified: reply.author_verified,
+            parentId: reply.parent_id
+          })) || []
+        }));
+        
+        console.log('🔄 댓글 상태 업데이트:', transformedComments.length + '개');
+        console.log('📋 변환된 댓글 목록:', transformedComments);
+        
+        setPostComments(transformedComments);
+        
+        // 5. 추가 검증: 새 댓글이 UI에 반영되었는지 확인
+        setTimeout(() => {
+          if (newComment?.id) {
+            const uiComment = transformedComments.find(c => c.id === newComment.id);
+            if (uiComment) {
+              console.log('✅ UI 반영 확인됨: 새 댓글이 화면에 표시됨');
+            } else {
+              console.error('❌ UI 반영 실패: 새 댓글이 화면에 표시되지 않음');
+            }
+          }
+        }, 500);
+        
+        toast({
+          title: "댓글이 등록되었습니다",
+          status: "success",
+          duration: 2000,
+        });
+      } else {
+        console.error('❌ 댓글 목록 업데이트 실패: updatedComments가 null');
+        toast({
+          title: "댓글은 등록되었지만 새로고침이 필요합니다",
+          description: "페이지를 새로고침하면 댓글을 볼 수 있습니다",
+          status: "warning", 
+          duration: 4000,
+        });
+      }
       
     } catch (error) {
       console.error('댓글 작성 실패:', error);
@@ -677,14 +991,7 @@ const LoungeDetail: React.FC = () => {
               <HStack spacing={4} fontSize="sm" color={colorMode === 'dark' ? 'gray.300' : 'gray.600'}>
                 <HStack spacing={2}>
                   <Text fontWeight="500">{post.author_name}</Text>
-                  {post.author_id && (
-                    <LevelBadge 
-                      level={getUserDisplayLevel(post.author_id).level} 
-                      size="xs" 
-                      variant="subtle"
-                      showIcon={true}
-                    />
-                  )}
+                  {post.author_id && <PostAuthorLevel authorId={post.author_id} />}
                   {post.author_verified && (
                     <Badge colorScheme="green" size="sm">인사담당자</Badge>
                   )}
@@ -718,6 +1025,7 @@ const LoungeDetail: React.FC = () => {
 
         {/* 글 본문 */}
         <Box
+          ref={contentRef}
           fontSize="lg"
           lineHeight="1.8"
           color={colorMode === 'dark' ? 'gray.200' : 'gray.800'}
@@ -735,24 +1043,231 @@ const LoungeDetail: React.FC = () => {
             '& p': {
               mb: 3,
             },
+            '& a': {
+              color: colorMode === 'dark' ? '#A78BFA' : '#7A5AF8',
+              textDecoration: 'underline',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              '&:hover': {
+                color: colorMode === 'dark' ? '#C4B5FD' : '#5A3CD8',
+                textDecoration: 'underline',
+              }
+            },
           }}
           dangerouslySetInnerHTML={{
             __html: (() => {
               const content = post.content;
+              console.log('🔍 게시글 콘텐츠 렌더링 시작:', { 
+                contentLength: content?.length,
+                containsYoutube: content?.includes('youtube'),
+                containsEmbedContainer: content?.includes('embed-container'),
+                firstChars: content?.substring(0, 200) 
+              });
               
               // HTML 콘텐츠인지 확인 (WYSIWYG 에디터로 작성된 경우)
-              const isHTML = content.includes('<p>') || content.includes('<h1>') || content.includes('<span style=');
+              const isHTML = content.includes('<p>') || content.includes('<h1>') || content.includes('<span style=') || content.includes('<div');
               
               if (isHTML) {
-                // 이미 HTML이면 그대로 사용 (형광펜 스타일 최적화)
-                // 형광펜 배경색이 밝기 때문에 어두운 텍스트가 더 잘 보임
-                return content
+                console.log('✅ HTML 콘텐츠로 인식됨');
+                
+                // ⭐ 핵심 수정: 이미 임베드가 포함되어 있는지 확인
+                const hasExistingEmbeds = content.includes('youtube-embed-container') || 
+                                         content.includes('link-embed-container') ||
+                                         content.includes('<iframe');
+                
+                if (hasExistingEmbeds) {
+                  console.log('✅ 이미 임베드가 포함된 콘텐츠, 그대로 사용');
+                  // 형광펜 스타일만 최적화하고 그대로 반환
+                  return content
+                    .replace(/background-color:\s*rgb\(254,\s*240,\s*138\)/g, 'background-color: #fef08a; color: #1f2937')
+                    .replace(/background-color:\s*rgb\(187,\s*247,\s*208\)/g, 'background-color: #bbf7d0; color: #1f2937')
+                    .replace(/background-color:\s*rgb\(191,\s*219,\s*254\)/g, 'background-color: #bfdbfe; color: #1f2937')
+                    .replace(/background-color:\s*rgb\(252,\s*231,\s*243\)/g, 'background-color: #fce7f3; color: #1f2937')
+                    .replace(/background-color:\s*rgb\(233,\s*213,\s*255\)/g, 'background-color: #e9d5ff; color: #1f2937');
+                }
+                
+                console.log('🔄 임베드가 없는 콘텐츠, 임베드 처리 시작');
+                
+                // HTML 엔티티 디코딩 함수
+                const decodeHtmlEntities = (str: string) => {
+                  return str
+                    .replace(/&amp;/g, '&')
+                    .replace(/&lt;/g, '<')
+                    .replace(/&gt;/g, '>')
+                    .replace(/&quot;/g, '"')
+                    .replace(/&#39;/g, "'");
+                };
+                
+                // 이미 HTML이면 링크 임베드 및 유튜브 임베드 처리
+                let processedContent = decodeHtmlEntities(content)
+                  // 형광펜 스타일 최적화
                   .replace(/background-color:\s*rgb\(254,\s*240,\s*138\)/g, 'background-color: #fef08a; color: #1f2937')
                   .replace(/background-color:\s*rgb\(187,\s*247,\s*208\)/g, 'background-color: #bbf7d0; color: #1f2937')
                   .replace(/background-color:\s*rgb\(191,\s*219,\s*254\)/g, 'background-color: #bfdbfe; color: #1f2937')
                   .replace(/background-color:\s*rgb\(252,\s*231,\s*243\)/g, 'background-color: #fce7f3; color: #1f2937')
                   .replace(/background-color:\s*rgb\(233,\s*213,\s*255\)/g, 'background-color: #e9d5ff; color: #1f2937');
+                
+                // 유튜브 링크를 임베드로 변환 (iframe이 포함되지 않은 경우)
+                if (processedContent.includes('youtube.com') || processedContent.includes('youtu.be')) {
+                  console.log('🎥 라운지 유튜브 링크 감지됨, 임베드 변환 시도 중...');
+                  
+                  // 더 다양한 패턴의 유튜브 링크 매칭을 위한 개선된 정규식
+                  const youtubePatterns = [
+                    // 패턴 1: <p> 태그 내 평문 YouTube URL (가장 일반적인 케이스)
+                    /(<p[^>]*>.*?)(https?:\/\/(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)[^\s<]*)(.*?<\/p>)/g,
+                    // 패턴 2: <a href="youtube링크">텍스트</a>
+                    /<a[^>]*href=["'](https?:\/\/(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]+))[^"']*["'][^>]*>([^<]+)<\/a>/g,
+                    // 패턴 3: 추가 링크 패턴들
+                    /<a[^>]*href=["'](https?:\/\/(www\.)?youtube\.com\/watch\?v=([\w-]+)[^"']*)["'][^>]*>([^<]+)<\/a>/g,
+                    /<a[^>]*href=["'](https?:\/\/youtu\.be\/([\w-]+)[^"']*)["'][^>]*>([^<]+)<\/a>/g
+                  ];
+                  
+                  let matchFound = false;
+                  youtubePatterns.forEach((pattern, index) => {
+                    processedContent = processedContent.replace(pattern, (match, ...args) => {
+                      let url, videoId, text, beforeContent = '', afterContent = '';
+                      
+                      if (index === 0) {
+                        // 패턴 1: (<p[^>]*>.*?)(youtube URL)(.*?<\/p>)
+                        [beforeContent, url, , , , , afterContent] = args;
+                        text = url; // 평문 URL은 URL 자체가 텍스트
+                      } else {
+                        // 패턴 2-4: <a> 태그 패턴들
+                        url = args[0];
+                        text = args[args.length - 2]; // 텍스트는 마지막에서 두 번째
+                      }
+                      
+                      // 비디오 ID 추출
+                      if (url.includes('youtu.be/')) {
+                        videoId = url.split('youtu.be/')[1].split('?')[0].split('&')[0];
+                      } else if (url.includes('youtube.com/watch?v=')) {
+                        videoId = url.split('v=')[1].split('&')[0];
+                      } else if (url.includes('youtube.com/embed/')) {
+                        videoId = url.split('embed/')[1].split('?')[0].split('&')[0];
+                      }
+                      
+                      if (videoId && videoId.length >= 10) {
+                        console.log(`🎥 라운지 패턴 ${index + 1}로 유튜브 링크 매칭 성공:`, { url, videoId, text, match });
+                        matchFound = true;
+                        
+                        if (index === 0) {
+                          // 패턴 1: <p> 태그 내 평문 URL 교체
+                          return `${beforeContent}<a href="${url}" target="_blank" rel="noopener noreferrer" style="color: ${colorMode === 'dark' ? '#A78BFA' : '#7A5AF8'}; text-decoration: underline;">${url}</a>${afterContent}
+                            <div class="youtube-embed-container" style="position: relative; padding-bottom: 56.25%; height: 0; margin: 16px 0; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0, 0, 0, ${colorMode === 'dark' ? '0.3' : '0.1'});">
+                              <iframe 
+                                src="https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1&showinfo=0" 
+                                style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none;"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowfullscreen
+                                loading="lazy"
+                                frameborder="0">
+                              </iframe>
+                            </div>`;
+                        } else {
+                          // 패턴 2-4: <a> 태그 교체
+                          return `
+                            <p><a href="${url}" target="_blank" rel="noopener noreferrer" style="color: ${colorMode === 'dark' ? '#A78BFA' : '#7A5AF8'}; text-decoration: underline;">${text}</a></p>
+                            <div class="youtube-embed-container" style="position: relative; padding-bottom: 56.25%; height: 0; margin: 16px 0; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0, 0, 0, ${colorMode === 'dark' ? '0.3' : '0.1'});">
+                              <iframe 
+                                src="https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1&showinfo=0" 
+                                style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none;"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowfullscreen
+                                loading="lazy"
+                                frameborder="0">
+                              </iframe>
+                            </div>
+                          `;
+                        }
+                      } else {
+                        console.log(`❌ 라운지 패턴 ${index + 1} 매칭됐지만 비디오 ID 추출 실패:`, { url, videoId });
+                        return match; // 원본 반환
+                      }
+                    });
+                  });
+                  
+                  if (!matchFound) {
+                    console.log('❌ 라운지 모든 유튜브 패턴 매칭 실패. 콘텐츠 샘플:', processedContent.substring(0, 500));
+                  }
+                }
+                
+                // 일반 링크를 링크 카드로 변환 (http로 시작하는 링크 중 유튜브가 아닌 것)
+                processedContent = processedContent.replace(
+                  /<a[^>]*href=["'](https?:\/\/(?!.*youtube\.com)(?!.*youtu\.be)[^"']+)["'][^>]*>([^<]+)<\/a>/g,
+                  (match, url, text) => {
+                    // 유튜브 링크는 제외
+                    if (url.includes('youtube.com') || url.includes('youtu.be')) {
+                      return match;
+                    }
+                    
+                    console.log('🔗 일반 링크 카드 처리:', { url, text });
+                    return `
+                      <div class="link-embed-container" onclick="window.open('${url}', '_blank', 'noopener,noreferrer');" style="
+                        border: 2px solid ${colorMode === 'dark' ? '#4d4d59' : '#e4e4e5'};
+                        border-radius: 8px;
+                        padding: 16px;
+                        margin: 16px 0;
+                        background-color: ${colorMode === 'dark' ? '#3c3c47' : '#f8f9fa'};
+                        transition: all 0.2s ease;
+                        cursor: pointer;
+                      ">
+                        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+                          <div style="
+                            width: 32px;
+                            height: 32px;
+                            background: linear-gradient(135deg, #7A5AF8, #A78BFA);
+                            border-radius: 8px;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            color: white;
+                            font-weight: 600;
+                            font-size: 14px;
+                          ">
+                            🔗
+                          </div>
+                          <div style="flex: 1; min-width: 0;">
+                            <div style="
+                              font-weight: 600;
+                              color: ${colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'};
+                              font-size: 16px;
+                              line-height: 1.3;
+                              margin-bottom: 4px;
+                              word-break: break-word;
+                            ">
+                              ${text}
+                            </div>
+                            <div style="
+                              color: ${colorMode === 'dark' ? '#9e9ea4' : '#626269'};
+                              font-size: 14px;
+                              word-break: break-all;
+                            ">
+                              ${url}
+                            </div>
+                          </div>
+                        </div>
+                        <div style="
+                          color: ${colorMode === 'dark' ? '#7e7e87' : '#9e9ea4'};
+                          font-size: 12px;
+                          text-align: right;
+                        ">
+                          클릭하여 링크 열기 →
+                        </div>
+                      </div>
+                    `;
+                  }
+                );
+                
+                console.log('✅ 임베드 처리 완료:', { 
+                  originalLength: content.length,
+                  processedLength: processedContent.length,
+                  hasYoutubeEmbed: processedContent.includes('youtube-embed-container'),
+                  hasLinkCard: processedContent.includes('link-embed-container')
+                });
+                
+                return processedContent;
               } else {
+                console.log('📝 마크다운/텍스트 콘텐츠로 인식됨');
                 // 마크다운이나 일반 텍스트면 변환 (형광펜 최적화)
                 // 형광펜 배경색이 밝기 때문에 어두운 텍스트가 더 잘 보임
                 return content

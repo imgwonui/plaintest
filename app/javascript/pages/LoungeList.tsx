@@ -48,13 +48,84 @@ import { optimizedLoungeService } from '../services/optimizedDataService';
 import { getAllTags, getTagById } from '../data/tags';
 import TagSelector from '../components/TagSelector';
 import LevelBadge from '../components/UserLevel/LevelBadge';
-import { getUserDisplayLevel } from '../services/userLevelService';
+import { getDatabaseUserLevel, databaseUserLevelService } from '../services/databaseUserLevelService';
 import dayjs from 'dayjs';
 
 type SortOption = 'latest' | 'popular';
 type PopularitySort = 'likes' | 'scraps';
 type TypeFilter = 'all' | 'question' | 'experience' | 'info' | 'free' | 'news' | 'advice' | 'recommend' | 'anonymous';
 type ViewMode = 'card' | 'list';
+
+// 실시간 작성자 레벨 표시 컴포넌트
+const AuthorLevelBadge: React.FC<{ authorId: string }> = ({ authorId }) => {
+  const [authorLevel, setAuthorLevel] = useState(1);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // 초기 레벨 로드
+  useEffect(() => {
+    const loadLevel = async () => {
+      try {
+        setIsLoading(true);
+        const levelData = await getDatabaseUserLevel(authorId);
+        setAuthorLevel(levelData.level);
+      } catch (error) {
+        console.warn('작성자 레벨 로드 실패:', error);
+        setAuthorLevel(1);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (authorId) {
+      loadLevel();
+    }
+  }, [authorId]);
+
+  // 레벨업 이벤트 리스너
+  useEffect(() => {
+    const handleLevelUp = (event: CustomEvent) => {
+      if (event.detail.userId === authorId) {
+        console.log(`📈 라운지 작성자 레벨업 반영: ${authorId} LV${event.detail.oldLevel} → LV${event.detail.newLevel}`);
+        setAuthorLevel(event.detail.newLevel);
+      }
+    };
+
+    // 캐시 무효화 이벤트 리스너 (다른 곳에서 활동이 업데이트될 때)
+    const handleCacheInvalidated = (event: CustomEvent) => {
+      if (event.detail.userId === authorId) {
+        console.log(`🔄 작성자 캐시 무효화됨, 레벨 새로고침: ${authorId}`);
+        // 새로운 레벨 데이터 로드
+        getDatabaseUserLevel(authorId).then(levelData => {
+          setAuthorLevel(levelData.level);
+        }).catch(error => {
+          console.warn('캐시 무효화 후 레벨 로드 실패:', error);
+        });
+      }
+    };
+
+    if (typeof window !== 'undefined' && authorId) {
+      window.addEventListener('userLevelUp', handleLevelUp as EventListener);
+      window.addEventListener('userCacheInvalidated', handleCacheInvalidated as EventListener);
+      return () => {
+        window.removeEventListener('userLevelUp', handleLevelUp as EventListener);
+        window.removeEventListener('userCacheInvalidated', handleCacheInvalidated as EventListener);
+      };
+    }
+  }, [authorId]);
+
+  if (isLoading) {
+    return <LevelBadge level={1} size="xs" variant="subtle" showIcon={true} />;
+  }
+
+  return (
+    <LevelBadge 
+      level={authorLevel} 
+      size="xs" 
+      variant="subtle"
+      showIcon={true}
+    />
+  );
+};
 
 const LoungeList: React.FC = () => {
   const { colorMode } = useColorMode();
@@ -84,7 +155,7 @@ const LoungeList: React.FC = () => {
         const response = await loungeService.getPopular(1, 100);
         posts = response.posts || [];
       } else {
-        const response = await optimizedLoungeService.getAll(1, 50, typeFilter === 'all' ? undefined : typeFilter);
+        const response = await optimizedLoungeService.getAll(1, 50, typeFilter === 'all' ? undefined : typeFilter, true, true); // forceRefresh = true
         posts = response.posts || [];
       }
       
@@ -125,14 +196,66 @@ const LoungeList: React.FC = () => {
     loadPosts();
   }, [activeTab, typeFilter]);
 
-  // location 변경될 때마다 데이터 새로고침 (글 작성 후 돌아올 때 핵심!)
+  // location 변경될 때마다 데이터 새로고침 (글 작성/삭제 후 돌아올 때 핵심!)
   useEffect(() => {
     console.log('라우팅 위치 변경됨:', location.pathname, location.state);
     if (location.pathname === '/lounge') {
       console.log('라운지 페이지 진입 - 새로고침 시작');
-      loadPosts();
+      
+      // 글 작성 후 돌아온 경우 - 캐시 완전 무효화 후 강제 새로고침
+      if (location.state?.refresh) {
+        console.log('📝 글 작성 후 돌아옴 - 캐시 무효화 후 강제 새로고침');
+        
+        // 1. 캐시 완전 무효화
+        if (typeof window !== 'undefined') {
+          // LocalStorage와 SessionStorage 캐시 무효화
+          const keys = Object.keys(localStorage);
+          keys.forEach(key => {
+            if (key.includes('lounge') || key.includes('cache')) {
+              localStorage.removeItem(key);
+            }
+          });
+          
+          const sessionKeys = Object.keys(sessionStorage);
+          sessionKeys.forEach(key => {
+            if (key.includes('lounge') || key.includes('cache')) {
+              sessionStorage.removeItem(key);
+            }
+          });
+          console.log('💥 모든 라운지 관련 캐시 완전 무효화 완료');
+        }
+        
+        // 2. 즉시 새로고침 (딜레이 없음)
+        loadPosts();
+        
+        // 3. 1초 후 한번 더 새로고침 (확실한 동기화)
+        setTimeout(() => {
+          console.log('🔄 글 작성 후 추가 새로고침 (확실한 동기화)');
+          loadPosts();
+        }, 1000);
+      }
+      // 글 삭제 후 돌아온 경우 - 더 긴 딜레이와 강제 새로고침
+      else if (location.state?.deleted) {
+        console.log('🗑️ 글 삭제 후 돌아옴 - 강제 새로고침 with longer delay');
+        const deletedPostId = location.state.deletedPostId;
+        
+        // 삭제된 글을 즉시 목록에서 제거
+        if (deletedPostId) {
+          setLoungePosts(prevPosts => prevPosts.filter(post => post.id !== deletedPostId));
+          console.log(`🗑️ 삭제된 글 ${deletedPostId}을 목록에서 즉시 제거`);
+        }
+        
+        // 1초 후 전체 목록 새로고침 (확실한 동기화)
+        setTimeout(() => {
+          console.log('🔄 삭제 후 전체 목록 강제 새로고침');
+          loadPosts();
+        }, 1000);
+      } 
+      else {
+        loadPosts();
+      }
     }
-  }, [location.pathname, location.state?.timestamp]);
+  }, [location.pathname, location.state?.timestamp, location.state?.refresh, location.state?.deleted]);
 
   // 페이지가 포커스될 때마다 데이터 새로고침 (글 작성 후 돌아올 때)
   useEffect(() => {
@@ -622,12 +745,7 @@ const LoungeList: React.FC = () => {
                                   {post.author_name}
                                 </Text>
                                 {post.author_id && (
-                                  <LevelBadge 
-                                    level={getUserDisplayLevel(post.author_id).level} 
-                                    size="xs" 
-                                    variant="subtle"
-                                    showIcon={true}
-                                  />
+                                  <AuthorLevelBadge authorId={post.author_id} />
                                 )}
                               </VStack>
                             </HStack>

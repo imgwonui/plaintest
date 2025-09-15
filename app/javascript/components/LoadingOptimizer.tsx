@@ -103,42 +103,59 @@ export const CommentSkeleton: React.FC = () => {
   );
 
   return (
-    <Box p={4} borderRadius="md" border="1px solid" borderColor="gray.200">
-      <VStack align="stretch" spacing={3}>
-        {/* 작성자 정보 */}
-        <HStack>
+    <HStack align="flex-start" spacing={3} w="full">
+      {/* 아바타 스켈레톤 */}
+      <Box
+        width="32px"
+        height="32px"
+        bg={shimmerBg}
+        backgroundSize="200px 100%"
+        animation={`${shimmer} 1.5s infinite linear`}
+        borderRadius="full"
+        flexShrink={0}
+      />
+      
+      {/* 댓글 내용 영역 */}
+      <VStack align="stretch" flex={1} spacing={2} minW={0}>
+        {/* 작성자 정보와 시간 */}
+        <HStack justify="space-between" w="full">
+          <HStack spacing={2}>
+            {/* 작성자 이름 */}
+            <Box
+              height="14px"
+              width="65px"
+              bg={shimmerBg}
+              backgroundSize="200px 100%"
+              animation={`${shimmer} 1.5s infinite linear`}
+              borderRadius="sm"
+            />
+            {/* 레벨 뱃지 */}
+            <Box
+              height="16px"
+              width="35px"
+              bg={shimmerBg}
+              backgroundSize="200px 100%"
+              animation={`${shimmer} 1.5s infinite linear`}
+              borderRadius="sm"
+            />
+          </HStack>
+          
+          {/* 작성 시간 */}
           <Box
-            width="40px"
-            height="40px"
+            height="12px"
+            width="85px"
             bg={shimmerBg}
             backgroundSize="200px 100%"
             animation={`${shimmer} 1.5s infinite linear`}
-            borderRadius="full"
+            borderRadius="sm"
           />
-          <VStack align="start" spacing={1}>
-            <Box
-              height="14px"
-              width="80px"
-              bg={shimmerBg}
-              backgroundSize="200px 100%"
-              animation={`${shimmer} 1.5s infinite linear`}
-              borderRadius="sm"
-            />
-            <Box
-              height="12px"
-              width="60px"
-              bg={shimmerBg}
-              backgroundSize="200px 100%"
-              animation={`${shimmer} 1.5s infinite linear`}
-              borderRadius="sm"
-            />
-          </VStack>
         </HStack>
 
-        {/* 댓글 내용 */}
+        {/* 댓글 텍스트 내용 */}
         <VStack align="stretch" spacing={2}>
           <Box
             height="16px"
+            width="100%"
             bg={shimmerBg}
             backgroundSize="200px 100%"
             animation={`${shimmer} 1.5s infinite linear`}
@@ -146,15 +163,35 @@ export const CommentSkeleton: React.FC = () => {
           />
           <Box
             height="16px"
+            width="75%"
             bg={shimmerBg}
             backgroundSize="200px 100%"
             animation={`${shimmer} 1.5s infinite linear`}
             borderRadius="sm"
-            width="70%"
+          />
+          <Box
+            height="16px"
+            width="45%"
+            bg={shimmerBg}
+            backgroundSize="200px 100%"
+            animation={`${shimmer} 1.5s infinite linear`}
+            borderRadius="sm"
           />
         </VStack>
+
+        {/* 답글 버튼 영역 */}
+        <HStack mt={1}>
+          <Box
+            height="12px"
+            width="25px"
+            bg={shimmerBg}
+            backgroundSize="200px 100%"
+            animation={`${shimmer} 1.5s infinite linear`}
+            borderRadius="sm"
+          />
+        </HStack>
       </VStack>
-    </Box>
+    </HStack>
   );
 };
 

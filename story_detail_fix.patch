@@ -1,0 +1,62 @@
+# StoryDetail.tsx dangerouslySetInnerHTML 부분 수정
+
+기존 코드 (1122-1240 라인 범위):
+
+```javascript
+if (isHTML) {
+  console.log('✅ HTML 콘텐츠로 인식됨, 임베드 처리 시작');
+  
+  // HTML 콘텐츠 - H1, H2 태그에 ID 추가 및 링크 임베드 처리
+  let processedContent = content
+    // 형광펜 스타일 최적화
+    // ... 기존 스타일 처리 ...
+  
+  // 유튜브 링크를 임베드로 변환
+  if (processedContent.includes('youtube.com') || processedContent.includes('youtu.be')) {
+    // ... 기존 유튜브 처리 ...
+  }
+  
+  // 일반 링크를 링크 카드로 변환
+  processedContent = processedContent.replace(
+    // ... 기존 링크 카드 처리 ...
+  );
+  
+  return processedContent;
+}
+```
+
+수정된 코드:
+
+```javascript
+if (isHTML) {
+  console.log('✅ HTML 콘텐츠로 인식됨');
+  
+  // ⭐ 핵심 수정: 이미 임베드가 포함되어 있는지 확인
+  const hasExistingEmbeds = content.includes('youtube-embed-container') || 
+                           content.includes('link-embed-container') ||
+                           content.includes('<iframe');
+  
+  if (hasExistingEmbeds) {
+    console.log('✅ 이미 임베드가 포함된 콘텐츠, 그대로 사용');
+    // 형광펜 스타일만 최적화하고 그대로 반환
+    return content
+      .replace(/background-color:\s*rgb\(254,\s*240,\s*138\)/g, 'background-color: #fef08a; color: #1f2937')
+      .replace(/background-color:\s*rgb\(187,\s*247,\s*208\)/g, 'background-color: #bbf7d0; color: #1f2937')
+      .replace(/background-color:\s*rgb\(191,\s*219,\s*254\)/g, 'background-color: #bfdbfe; color: #1f2937')
+      .replace(/background-color:\s*rgb\(252,\s*231,\s*243\)/g, 'background-color: #fce7f3; color: #1f2937')
+      .replace(/background-color:\s*rgb\(233,\s*213,\s*255\)/g, 'background-color: #e9d5ff; color: #1f2937')
+      .replace(/<h1[^>]*>([^<]+)<\/h1>/gi, (match, text) => {
+        const id = generateHtmlId(text);
+        return `<h1 id="${id}">${text}</h1>`;
+      })
+      .replace(/<h2[^>]*>([^<]+)<\/h2>/gi, (match, text) => {
+        const id = generateHtmlId(text);
+        return `<h2 id="${id}">${text}</h2>`;
+      });
+  }
+  
+  console.log('🔄 임베드가 없는 콘텐츠, 임베드 처리 시작');
+  
+  // 기존 임베드 처리 로직...
+}
+```

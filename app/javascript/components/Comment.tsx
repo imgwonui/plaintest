@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   VStack,
@@ -27,8 +27,7 @@ import {
 import { EditIcon, DeleteIcon } from '@chakra-ui/icons';
 import dayjs from 'dayjs';
 import LevelBadge from './UserLevel/LevelBadge';
-import { getUserDisplayLevel } from '../services/userLevelService';
-import { sessionUserService } from '../services/sessionDataService';
+import { getDatabaseUserLevel, databaseUserLevelService } from '../services/databaseUserLevelService';
 import { useAuth } from '../contexts/AuthContext';
 
 interface CommentData {
@@ -75,6 +74,79 @@ const Comment: React.FC<CommentProps> = ({
   const [replyContent, setReplyContent] = useState('');
   const [replyGuestName, setReplyGuestName] = useState('');
   const [replyGuestPassword, setReplyGuestPassword] = useState('');
+  
+  // 실시간 레벨 상태 관리
+  const [authorLevel, setAuthorLevel] = useState(1);
+  const [isLoadingLevel, setIsLoadingLevel] = useState(false);
+
+  // 댓글 작성자의 레벨 정보 로드
+  useEffect(() => {
+    const loadAuthorLevel = async () => {
+      console.log(`🔍 댓글 레벨 로드 체크 (ID: ${comment.id}):`, {
+        author: comment.author,
+        authorId: comment.authorId,
+        isGuest: comment.isGuest,
+        hasAuthorId: !!comment.authorId,
+        parentId: comment.parentId,
+        commentType: comment.parentId ? '대댓글' : '댓글'
+      });
+
+      if (!comment.isGuest && comment.authorId) {
+        try {
+          setIsLoadingLevel(true);
+          console.log(`📊 ${comment.parentId ? '대댓글' : '댓글'} 작성자 레벨 로드 시작: ${comment.author} (${comment.authorId})`);
+          const levelData = await getDatabaseUserLevel(comment.authorId);
+          console.log(`✅ ${comment.parentId ? '대댓글' : '댓글'} 작성자 레벨 로드 완료: ${comment.author} LV${levelData.level}`);
+          setAuthorLevel(levelData.level);
+        } catch (error) {
+          console.error(`❌ ${comment.parentId ? '대댓글' : '댓글'} 작성자 레벨 로드 실패:`, comment.author, error);
+          setAuthorLevel(1); // 기본값
+        } finally {
+          setIsLoadingLevel(false);
+        }
+      } else {
+        console.log(`⏭️ 게스트 ${comment.parentId ? '대댓글' : '댓글'}이거나 authorId 누락: ${comment.author}`, {
+          isGuest: comment.isGuest,
+          authorId: comment.authorId
+        });
+        setIsLoadingLevel(false);
+        setAuthorLevel(1);
+      }
+    };
+
+    loadAuthorLevel();
+  }, [comment.authorId, comment.isGuest, comment.author, comment.id, comment.parentId]);
+
+  // 레벨업 이벤트 리스너
+  useEffect(() => {
+    const handleLevelUp = (event: CustomEvent) => {
+      if (event.detail.userId === comment.authorId) {
+        console.log(`💫 댓글 작성자 레벨업 반영: ${comment.author} LV${event.detail.oldLevel} → LV${event.detail.newLevel}`);
+        setAuthorLevel(event.detail.newLevel);
+      }
+    };
+
+    // 캐시 무효화 이벤트 리스너
+    const handleCacheInvalidated = (event: CustomEvent) => {
+      if (event.detail.userId === comment.authorId) {
+        console.log(`🔄 댓글 작성자 캐시 무효화됨, 레벨 새로고침: ${comment.author}`);
+        getDatabaseUserLevel(comment.authorId).then(levelData => {
+          setAuthorLevel(levelData.level);
+        }).catch(error => {
+          console.warn('댓글 작성자 캐시 무효화 후 레벨 로드 실패:', error);
+        });
+      }
+    };
+
+    if (typeof window !== 'undefined' && !comment.isGuest && comment.authorId) {
+      window.addEventListener('userLevelUp', handleLevelUp as EventListener);
+      window.addEventListener('userCacheInvalidated', handleCacheInvalidated as EventListener);
+      return () => {
+        window.removeEventListener('userLevelUp', handleLevelUp as EventListener);
+        window.removeEventListener('userCacheInvalidated', handleCacheInvalidated as EventListener);
+      };
+    }
+  }, [comment.authorId, comment.author, comment.isGuest]);
 
   // 현재 사용자가 이 댓글을 수정/삭제할 수 있는지 확인
   const canEditDelete = () => {
@@ -182,7 +254,13 @@ const Comment: React.FC<CommentProps> = ({
         <Avatar 
           size="sm" 
           name={comment.author} 
-          src={comment.isGuest ? undefined : (user?.name === comment.author ? user?.avatar : undefined)} 
+          // 게스트가 아닌 모든 사용자에게 기본 아바타 표시 (이름 기반 색상 아바타)
+          // src는 현재 로그인한 사용자가 자신의 댓글을 볼 때만 실제 아바타 이미지 표시
+          src={
+            comment.isGuest ? undefined : (
+              user && user.name === comment.author ? user?.avatar : undefined
+            )
+          } 
         />
         <VStack align="stretch" flex={1} spacing={2}>
           <HStack justify="space-between">
@@ -196,17 +274,26 @@ const Comment: React.FC<CommentProps> = ({
                 )}
               </Text>
               {!comment.isGuest && comment.authorId && (
-                // 댓글 작성자가 현재 관리자인 경우 "관리자" 표시, 일반 사용자는 레벨 표시
-                currentUser?.isAdmin && comment.authorId === currentUser.id ? (
-                  <Badge colorScheme="purple" size="sm">관리자</Badge>
-                ) : (
-                  <LevelBadge 
-                    level={getUserDisplayLevel(comment.authorId).level} 
-                    size="xs" 
-                    variant="subtle"
-                    showIcon={true}
-                  />
-                )
+                <>
+                  {/* 댓글 작성자가 관리자이고 본인 댓글인 경우에만 관리자 뱃지 */}
+                  {currentUser?.isAdmin && comment.authorId === currentUser.id && (
+                    <Badge colorScheme="purple" size="sm">관리자</Badge>
+                  )}
+                  
+                  {/* 관리자 뱃지가 표시되지 않는 모든 경우에 레벨 표시 */}
+                  {!(currentUser?.isAdmin && comment.authorId === currentUser.id) && (
+                    isLoadingLevel ? (
+                      <Badge colorScheme="gray" size="sm" variant="subtle">로딩중...</Badge>
+                    ) : (
+                      <LevelBadge 
+                        level={authorLevel} 
+                        size="xs" 
+                        variant="subtle"
+                        showIcon={true}
+                      />
+                    )
+                  )}
+                </>
               )}
               {comment.authorVerified && !comment.isGuest && (
                 <Badge colorScheme="green" size="sm">인사담당자</Badge>
@@ -522,6 +609,80 @@ interface CommentFormProps {
   currentUserVerified?: boolean;
 }
 
+// 실시간 사용자 레벨 표시 컴포넌트
+const UserLevelDisplay: React.FC<{ user: any }> = ({ user }) => {
+  const [currentLevel, setCurrentLevel] = useState(1);
+  const [isLoadingLevel, setIsLoadingLevel] = useState(false);
+
+  // 초기 레벨 로드
+  useEffect(() => {
+    const loadUserLevel = async () => {
+      if (user?.id && !user.isAdmin) {
+        try {
+          setIsLoadingLevel(true);
+          const levelData = await getDatabaseUserLevel(user.id);
+          setCurrentLevel(levelData.level);
+        } catch (error) {
+          console.warn('사용자 레벨 로드 실패:', error);
+          setCurrentLevel(1);
+        } finally {
+          setIsLoadingLevel(false);
+        }
+      }
+    };
+
+    loadUserLevel();
+  }, [user?.id, user?.isAdmin]);
+
+  // 레벨업 이벤트 리스너
+  useEffect(() => {
+    const handleLevelUp = (event: CustomEvent) => {
+      if (event.detail.userId === user?.id) {
+        console.log(`🎉 실시간 레벨업 반영: ${user.name} LV${event.detail.oldLevel} → LV${event.detail.newLevel}`);
+        setCurrentLevel(event.detail.newLevel);
+      }
+    };
+
+    // 캐시 무효화 이벤트 리스너
+    const handleCacheInvalidated = (event: CustomEvent) => {
+      if (event.detail.userId === user?.id) {
+        console.log(`🔄 댓글 폼 사용자 캐시 무효화됨, 레벨 새로고침: ${user.name}`);
+        getDatabaseUserLevel(user.id).then(levelData => {
+          setCurrentLevel(levelData.level);
+        }).catch(error => {
+          console.warn('캐시 무효화 후 레벨 로드 실패:', error);
+        });
+      }
+    };
+
+    if (typeof window !== 'undefined' && user?.id && !user.isAdmin) {
+      window.addEventListener('userLevelUp', handleLevelUp as EventListener);
+      window.addEventListener('userCacheInvalidated', handleCacheInvalidated as EventListener);
+      return () => {
+        window.removeEventListener('userLevelUp', handleLevelUp as EventListener);
+        window.removeEventListener('userCacheInvalidated', handleCacheInvalidated as EventListener);
+      };
+    }
+  }, [user?.id, user?.name, user?.isAdmin]);
+
+  if (user?.isAdmin) {
+    return <Badge colorScheme="purple" size="sm">관리자</Badge>;
+  }
+
+  if (isLoadingLevel) {
+    return <Badge colorScheme="gray" size="sm">LV--</Badge>;
+  }
+
+  return (
+    <LevelBadge 
+      level={currentLevel} 
+      size="xs" 
+      variant="subtle"
+      showIcon={true}
+    />
+  );
+};
+
 export const CommentForm: React.FC<CommentFormProps> = ({ 
   onSubmit, 
   isSubmitting = false,
@@ -535,18 +696,36 @@ export const CommentForm: React.FC<CommentFormProps> = ({
   const [guestName, setGuestName] = useState('');
   const [guestPassword, setGuestPassword] = useState('');
 
-  const handleSubmit = () => {
+  // 댓글 등록 후 레벨 업데이트 트리거
+  const handleSubmit = async () => {
     if (content.trim()) {
-      if (isLoggedIn) {
-        onSubmit(content.trim());
-      } else {
-        if (guestName.trim() && guestPassword.trim()) {
-          onSubmit(content.trim(), guestName.trim(), guestPassword.trim());
-          setGuestName('');
-          setGuestPassword('');
+      try {
+        if (isLoggedIn) {
+          onSubmit(content.trim());
+          
+          // 댓글 등록 후 사용자 레벨 업데이트 트리거 (로그인 사용자만)
+          if (user?.id && !user.isAdmin) {
+            console.log('📝 댓글 등록 완료, 레벨 업데이트 트리거 중...');
+            setTimeout(async () => {
+              try {
+                await databaseUserLevelService.updateUserActivity(user.id, true);
+                console.log('✅ 댓글 등록 후 레벨 업데이트 완료');
+              } catch (error) {
+                console.warn('⚠️ 댓글 등록 후 레벨 업데이트 실패:', error);
+              }
+            }, 500); // 댓글 등록 후 0.5초 후 레벨 업데이트
+          }
+        } else {
+          if (guestName.trim() && guestPassword.trim()) {
+            onSubmit(content.trim(), guestName.trim(), guestPassword.trim());
+            setGuestName('');
+            setGuestPassword('');
+          }
         }
+        setContent('');
+      } catch (error) {
+        console.error('댓글 등록 실패:', error);
       }
-      setContent('');
     }
   };
 
@@ -567,17 +746,7 @@ export const CommentForm: React.FC<CommentFormProps> = ({
             {currentUserName}님으로 댓글 작성
           </Text>
           {user && (
-            // 현재 사용자가 관리자인 경우 "관리자" 표시, 일반 사용자는 레벨 표시
-            user.isAdmin ? (
-              <Badge colorScheme="purple" size="sm">관리자</Badge>
-            ) : (
-              <LevelBadge 
-                level={getUserDisplayLevel(user.id).level} 
-                size="xs" 
-                variant="subtle"
-                showIcon={true}
-              />
-            )
+            <UserLevelDisplay user={user} />
           )}
           {currentUserVerified && (
             <Badge colorScheme="green" size="sm">인사담당자</Badge>

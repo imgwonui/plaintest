@@ -225,37 +225,40 @@ const Profile: React.FC = () => {
           loungeLikeCounts: updatedLoungePosts.map(p => ({ id: p.id, title: p.title?.substring(0, 20), likes: p.like_count }))
         });
         
-        // 🆕 새로운 데이터베이스 기반 레벨 시스템
-        console.log(`🔄 사용자 ${user.name} (ID: ${user.id}) 데이터베이스 레벨 업데이트 시도...`);
+        // 🔄 실제 활동 기반으로 레벨 계산 및 DB 갱신
+        console.log(`📊 사용자 ${user.name} (ID: ${user.id}) 활동 기반 레벨 계산 중...`);
         
         try {
-          // DB 기반 활동 업데이트 (실제 데이터 기반으로 레벨 재계산)
-          const updateResult = await trackDatabaseUserActivity(user.id);
+          // 실제 활동 통계
+          const activityStats = {
+            totalLikes: totalLikes,
+            totalPosts: myStories.length + myLoungePosts.length,
+            totalComments: 0, // 추후 필요시 구현
+            storyPromotions: myStories.length, // Story로 승격된 글
+            excellentPosts: updatedLoungePosts.filter(p => p.like_count >= 50).length,
+            totalBookmarks: userBookmarks.length
+          };
           
-          if (updateResult.leveledUp) {
-            console.log(`🎊 레벨업! LV${updateResult.oldLevel} → LV${updateResult.newLevel}`);
-            toast({
-              title: "레벨업!",
-              description: `축하드립니다! LV${updateResult.oldLevel}에서 LV${updateResult.newLevel}로 레벨업했습니다!`,
-              status: "success",
-              duration: 5000,
-              isClosable: true
-            });
-          }
+          console.log('📊 사용자 활동 통계:', activityStats);
           
-          // 업데이트된 레벨 정보 가져오기
-          const currentLevel = await getDatabaseUserLevel(user.id);
-          setUserLevel(currentLevel);
-          console.log('📊 현재 사용자 레벨:', currentLevel);
+          // DB에서 사용자 활동 업데이트 및 레벨 계산
+          await trackDatabaseUserActivity(user.id);
           
-          console.log('✅ 데이터베이스 기반 레벨 업데이트 완료');
+          // 업데이트된 레벨 정보 조회
+          const updatedLevel = await getDatabaseUserLevel(user.id);
+          setUserLevel(updatedLevel);
+          
+          console.log('✅ 실제 활동 기반 레벨 갱신 완료:', updatedLevel);
         } catch (levelError) {
-          console.error('⚠️ 데이터베이스 레벨 업데이트 실패:', levelError);
-          // 실패시에도 기본 레벨 정보 설정
+          console.error('⚠️ 레벨 계산/갱신 실패:', levelError);
+          
+          // 실패시 기본값으로라도 레벨 생성
           try {
-            const defaultLevel = await getDatabaseUserLevel(user.id);
-            setUserLevel(defaultLevel);
-          } catch {
+            await trackDatabaseUserActivity(user.id);
+            const fallbackLevel = await getDatabaseUserLevel(user.id);
+            setUserLevel(fallbackLevel);
+          } catch (fallbackError) {
+            console.error('❌ 기본 레벨 생성도 실패:', fallbackError);
             setUserLevel({ level: 1, totalExp: 0, tier: 'Bronze', displayText: 'LV1' });
           }
         }
@@ -514,10 +517,60 @@ const Profile: React.FC = () => {
                         </VStack>
                       </HStack>
                       
-                      {/* 현재는 통계를 간소화하여 표시 */}
-                      <Text fontSize="sm" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'} textAlign="center">
-                        💾 데이터베이스 기반으로 계산된 정확한 레벨입니다
-                      </Text>
+                      {/* 경험치 획득 방법 */}
+                      <VStack spacing={4} mt={4}>
+                        <Text fontSize="sm" color={colorMode === 'dark' ? '#c3c3c6' : '#4d4d59'} textAlign="center" fontWeight="500">
+                          🎯 경험치 획득 방법
+                        </Text>
+                        
+                        <VStack spacing={2} w="full">
+                          <HStack justify="space-between" w="full" p={2} bg={colorMode === 'dark' ? '#3c3c47' : '#f7f7f8'} borderRadius="md">
+                            <HStack spacing={2}>
+                              <Text fontSize="sm">❤️</Text>
+                              <Text fontSize="sm" color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}>좋아요 받기</Text>
+                            </HStack>
+                            <Text fontSize="sm" fontWeight="600" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
+                              {userLevel.stats?.totalLikes || 0}개 × 2 = {(userLevel.stats?.totalLikes || 0) * 2}점
+                            </Text>
+                          </HStack>
+                          
+                          <HStack justify="space-between" w="full" p={2} bg={colorMode === 'dark' ? '#3c3c47' : '#f7f7f8'} borderRadius="md">
+                            <HStack spacing={2}>
+                              <Text fontSize="sm">✍️</Text>
+                              <Text fontSize="sm" color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}>글 작성하기</Text>
+                            </HStack>
+                            <Text fontSize="sm" fontWeight="600" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
+                              {userLevel.stats?.totalPosts || 0}개 × 3 = {(userLevel.stats?.totalPosts || 0) * 3}점
+                            </Text>
+                          </HStack>
+                          
+                          <HStack justify="space-between" w="full" p={2} bg={colorMode === 'dark' ? '#3c3c47' : '#f7f7f8'} borderRadius="md">
+                            <HStack spacing={2}>
+                              <Text fontSize="sm">⭐</Text>
+                              <Text fontSize="sm" color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}>Story 승격</Text>
+                            </HStack>
+                            <Text fontSize="sm" fontWeight="600" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
+                              {userLevel.stats?.storyPromotions || 0}개 × 50 = {(userLevel.stats?.storyPromotions || 0) * 50}점
+                            </Text>
+                          </HStack>
+                          
+                          <HStack justify="space-between" w="full" p={2} bg={colorMode === 'dark' ? '#3c3c47' : '#f7f7f8'} borderRadius="md">
+                            <HStack spacing={2}>
+                              <Text fontSize="sm">🔖</Text>
+                              <Text fontSize="sm" color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}>북마크 받기</Text>
+                            </HStack>
+                            <Text fontSize="sm" fontWeight="600" color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}>
+                              {userLevel.stats?.totalBookmarks || 0}개 × 5 = {(userLevel.stats?.totalBookmarks || 0) * 5}점
+                            </Text>
+                          </HStack>
+                        </VStack>
+                        
+                        <Divider />
+                        
+                        <Text fontSize="xs" color={colorMode === 'dark' ? '#7e7e87' : '#9e9ea4'} textAlign="center">
+                          다음 레벨까지 {Math.max(0, LevelUtils.getRequiredExpForLevel(userLevel.level + 1) - userLevel.totalExp)}점 필요
+                        </Text>
+                      </VStack>
                     </VStack>
                   );
                 })()

@@ -1,0 +1,97 @@
+--- LoungeDetail.tsx의 문제있는 부분과 해결책 ---
+
+문제: dangerouslySetInnerHTML 내부에서 이미 임베드가 포함된 콘텐츠를 다시 처리하려고 함
+
+현재 코드 (1057-1196 라인):
+```javascript
+dangerouslySetInnerHTML={{
+  __html: (() => {
+    const content = post.content;
+    
+    // HTML 콘텐츠인지 확인 (WYSIWYG 에디터로 작성된 경우)
+    const isHTML = content.includes('<p>') || content.includes('<h1>') || content.includes('<span style=') || content.includes('<div');
+    
+    if (isHTML) {
+      console.log('✅ HTML 콘텐츠로 인식됨, 임베드 처리 시작');
+      
+      // 이미 HTML이면 링크 임베드 및 유튜브 임베드 처리
+      let processedContent = content
+        // 형광펜 스타일 최적화
+        .replace(/background-color:\s*rgb\(254,\s*240,\s*138\)/g, 'background-color: #fef08a; color: #1f2937')
+        // ... 기타 스타일 처리 ...
+
+      // ⚠️ 문제: 유튜브 링크를 임베드로 변환 (이미 임베드가 있을 수 있는데!)
+      if (processedContent.includes('youtube.com') || processedContent.includes('youtu.be')) {
+        processedContent = processedContent.replace(
+          // 링크를 찾아서 임베드로 변환하는 로직
+        );
+      }
+      
+      // ⚠️ 문제: 일반 링크를 링크 카드로 변환 (이미 링크 카드가 있을 수 있는데!)
+      processedContent = processedContent.replace(
+        // 링크를 찾아서 카드로 변환하는 로직
+      );
+    }
+  })()
+}}
+```
+
+해결책:
+```javascript
+dangerouslySetInnerHTML={{
+  __html: (() => {
+    const content = post.content;
+    console.log('🔍 게시글 콘텐츠 렌더링 시작:', { 
+      contentLength: content?.length,
+      containsYoutube: content?.includes('youtube'),
+      containsEmbedContainer: content?.includes('embed-container'),
+      firstChars: content?.substring(0, 200) 
+    });
+    
+    // HTML 콘텐츠인지 확인
+    const isHTML = content.includes('<p>') || content.includes('<h1>') || content.includes('<span style=') || content.includes('<div');
+    
+    if (isHTML) {
+      console.log('✅ HTML 콘텐츠로 인식됨');
+      
+      // ⭐ 핵심 수정: 이미 임베드가 포함되어 있는지 확인
+      const hasExistingEmbeds = content.includes('youtube-embed-container') || 
+                               content.includes('link-embed-container') ||
+                               content.includes('<iframe');
+      
+      if (hasExistingEmbeds) {
+        console.log('✅ 이미 임베드가 포함된 콘텐츠, 그대로 사용');
+        // 형광펜 스타일만 최적화하고 그대로 반환
+        return content
+          .replace(/background-color:\s*rgb\(254,\s*240,\s*138\)/g, 'background-color: #fef08a; color: #1f2937')
+          .replace(/background-color:\s*rgb\(187,\s*247,\s*208\)/g, 'background-color: #bbf7d0; color: #1f2937')
+          .replace(/background-color:\s*rgb\(191,\s*219,\s*254\)/g, 'background-color: #bfdbfe; color: #1f2937')
+          .replace(/background-color:\s*rgb\(252,\s*231,\s*243\)/g, 'background-color: #fce7f3; color: #1f2937')
+          .replace(/background-color:\s*rgb\(233,\s*213,\s*255\)/g, 'background-color: #e9d5ff; color: #1f2937');
+      }
+      
+      console.log('🔄 임베드가 없는 콘텐츠, 임베드 처리 시작');
+      
+      // 기존의 임베드 처리 로직 실행
+      let processedContent = content
+        // 형광펜 스타일 최적화
+        .replace(/background-color:\s*rgb\(254,\s*240,\s*138\)/g, 'background-color: #fef08a; color: #1f2937')
+        // ... 나머지 처리 로직
+        
+      // 유튜브 링크를 임베드로 변환
+      if (processedContent.includes('youtube.com') || processedContent.includes('youtu.be')) {
+        // 기존 로직...
+      }
+      
+      // 일반 링크를 링크 카드로 변환  
+      // 기존 로직...
+      
+      return processedContent;
+    } else {
+      // 마크다운 처리...
+    }
+  })()
+}}
+```
+
+같은 방식으로 StoryDetail.tsx도 수정 필요!

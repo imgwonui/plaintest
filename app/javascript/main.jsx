@@ -120,10 +120,12 @@ if (!process.env.NODE_ENV || process.env.NODE_ENV === 'development') {
   // 북마크 서비스 import
   Promise.all([
     import('./services/sessionDataService'),
-    import('./services/supabaseDataService')
-  ]).then(([sessionService, supabaseService]) => {
+    import('./services/supabaseDataService'),
+    import('./services/databaseUserLevelService')
+  ]).then(([sessionService, supabaseService, levelService]) => {
     const { sessionScrapService, sessionUserService } = sessionService;
-    const { storyService, loungeService, interactionService } = supabaseService;
+    const { storyService, loungeService, interactionService, userService } = supabaseService;
+    const { databaseUserLevelService, getDatabaseUserLevel } = levelService;
     window.Plain = {
       resetData: resetAllData,
       getStats: getDataStats,
@@ -144,6 +146,85 @@ if (!process.env.NODE_ENV || process.env.NODE_ENV === 'development') {
         } catch (error) {
           console.error('❌ Supabase 테이블 확인 실패:', error);
           return { error };
+        }
+      },
+      
+      // 현재 사용자 상태 및 레벨 확인
+      checkCurrentUser: async () => {
+        const savedUser = localStorage.getItem('plain_user');
+        if (savedUser) {
+          const user = JSON.parse(savedUser);
+          console.log('👤 현재 로그인 사용자:', user);
+          
+          if (user.id && !user.isAdmin) {
+            try {
+              const levelData = await getDatabaseUserLevel(user.id);
+              console.log('📊 사용자 레벨 데이터:', levelData);
+              
+              // DB에서 직접 조회
+              const dbLevelData = await userService.getUserLevel(user.id);
+              console.log('🗄️ DB 레벨 데이터:', dbLevelData);
+              
+              return { user, levelData, dbLevelData };
+            } catch (error) {
+              console.error('❌ 레벨 데이터 조회 실패:', error);
+              return { user, error };
+            }
+          } else {
+            console.log('🔒 관리자 계정이므로 레벨 확인 스킵');
+            return { user, isAdmin: true };
+          }
+        } else {
+          console.log('❌ 로그인된 사용자 없음');
+          return { notLoggedIn: true };
+        }
+      },
+      
+      // 특정 사용자의 레벨 확인
+      checkUserLevel: async (userId) => {
+        try {
+          console.log(`🔍 사용자 레벨 확인: ${userId}`);
+          const levelData = await getDatabaseUserLevel(userId);
+          const dbLevelData = await userService.getUserLevel(userId);
+          
+          console.log('📊 getDatabaseUserLevel 결과:', levelData);
+          console.log('🗄️ getUserLevel 결과:', dbLevelData);
+          
+          return { userId, levelData, dbLevelData };
+        } catch (error) {
+          console.error(`❌ 사용자 레벨 확인 실패 ${userId}:`, error);
+          return { userId, error };
+        }
+      },
+      
+      // 사용자 레벨 강제 생성
+      createUserLevel: async (userId) => {
+        try {
+          console.log(`🆕 사용자 레벨 강제 생성: ${userId}`);
+          await userService.initializeUserLevel(userId);
+          console.log(`✅ 사용자 레벨 생성 완료: ${userId}`);
+          
+          // 생성 후 확인
+          const levelData = await userService.getUserLevel(userId);
+          console.log('✅ 생성된 레벨 데이터:', levelData);
+          
+          return levelData;
+        } catch (error) {
+          console.error(`❌ 사용자 레벨 생성 실패 ${userId}:`, error);
+          return { userId, error };
+        }
+      },
+      
+      // 사용자 레벨 업데이트 강제 실행
+      updateUserLevel: async (userId) => {
+        try {
+          console.log(`🔄 사용자 레벨 업데이트 강제 실행: ${userId}`);
+          const result = await databaseUserLevelService.updateUserActivity(userId, true);
+          console.log('✅ 레벨 업데이트 결과:', result);
+          return result;
+        } catch (error) {
+          console.error(`❌ 레벨 업데이트 실패 ${userId}:`, error);
+          return { userId, error };
         }
       },
       
@@ -638,9 +719,18 @@ if (!process.env.NODE_ENV || process.env.NODE_ENV === 'development') {
       },
       
       login: (type = 'admin') => {
+        // 올바른 UUID v4 형식 생성 함수
+        const generateUUID = () => {
+          return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            const r = Math.random() * 16 | 0;
+            const v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+          });
+        };
+
         if (type === 'admin') {
-          // UUID 형식의 관리자 ID 사용
-          const adminId = 'admin-' + Date.now().toString() + '-' + Math.random().toString(36).substr(2, 9);
+          // 유효한 UUID 형식의 관리자 ID 사용 (고정 ID)
+          const adminId = '00000000-0000-4000-8000-000000000001';
           sessionUserService.setCurrentUser({ 
             id: adminId, 
             name: 'Admin', 
@@ -651,8 +741,8 @@ if (!process.env.NODE_ENV || process.env.NODE_ENV === 'development') {
           console.log('✅ 관리자로 로그인되었습니다. ID:', adminId);
           console.log('🧪 스토리 작성을 테스트하려면 Plain.testStoryCreation()을 실행하세요.');
         } else {
-          // UUID 형식의 일반 사용자 ID 사용
-          const userId = 'user-' + Date.now().toString() + '-' + Math.random().toString(36).substr(2, 9);
+          // 유효한 UUID 형식의 일반 사용자 ID 사용
+          const userId = generateUUID();
           sessionUserService.setCurrentUser({ 
             id: userId, 
             name: '테스터', 

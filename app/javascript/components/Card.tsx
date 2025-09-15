@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Card as ChakraCard,
@@ -17,7 +17,7 @@ import dayjs from 'dayjs';
 import { getTagById } from '../data/tags';
 import LevelBadge from './UserLevel/LevelBadge';
 import PromotionBadge from './PromotionBadge';
-import { getUserDisplayLevel } from '../services/userLevelService';
+import { getDatabaseUserLevel } from '../services/databaseUserLevelService';
 import OptimizedImage from './OptimizedImage';
 
 // HTML 태그를 제거하는 유틸리티 함수
@@ -46,6 +46,76 @@ const stripHtmlTags = (html: string): string => {
   }
   
   return stripped;
+};
+
+// 카드 작성자 실시간 레벨 표시 컴포넌트
+const CardAuthorLevel: React.FC<{ authorId: string }> = ({ authorId }) => {
+  const [authorLevel, setAuthorLevel] = useState(1);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // 초기 레벨 로드
+  useEffect(() => {
+    const loadLevel = async () => {
+      try {
+        setIsLoading(true);
+        const levelData = await getDatabaseUserLevel(authorId);
+        setAuthorLevel(levelData.level);
+      } catch (error) {
+        console.warn('카드 작성자 레벨 로드 실패:', error);
+        setAuthorLevel(1);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (authorId) {
+      loadLevel();
+    }
+  }, [authorId]);
+
+  // 레벨업 이벤트 리스너
+  useEffect(() => {
+    const handleLevelUp = (event: CustomEvent) => {
+      if (event.detail.userId === authorId) {
+        console.log(`📈 카드 작성자 레벨업 반영: ${authorId} LV${event.detail.oldLevel} → LV${event.detail.newLevel}`);
+        setAuthorLevel(event.detail.newLevel);
+      }
+    };
+
+    // 캐시 무효화 이벤트 리스너
+    const handleCacheInvalidated = (event: CustomEvent) => {
+      if (event.detail.userId === authorId) {
+        console.log(`🔄 카드 작성자 캐시 무효화됨, 레벨 새로고침: ${authorId}`);
+        getDatabaseUserLevel(authorId).then(levelData => {
+          setAuthorLevel(levelData.level);
+        }).catch(error => {
+          console.warn('카드 작성자 캐시 무효화 후 레벨 로드 실패:', error);
+        });
+      }
+    };
+
+    if (typeof window !== 'undefined' && authorId) {
+      window.addEventListener('userLevelUp', handleLevelUp as EventListener);
+      window.addEventListener('userCacheInvalidated', handleCacheInvalidated as EventListener);
+      return () => {
+        window.removeEventListener('userLevelUp', handleLevelUp as EventListener);
+        window.removeEventListener('userCacheInvalidated', handleCacheInvalidated as EventListener);
+      };
+    }
+  }, [authorId]);
+
+  if (isLoading) {
+    return <LevelBadge level={1} size="xs" variant="subtle" showIcon={true} />;
+  }
+
+  return (
+    <LevelBadge 
+      level={authorLevel} 
+      size="xs" 
+      variant="subtle"
+      showIcon={true}
+    />
+  );
 };
 
 interface CardProps {
@@ -228,14 +298,7 @@ const Card: React.FC<CardProps> = ({
                   {authorVerified ? (
                     <Badge colorScheme="green" size="sm">인사담당자</Badge>
                   ) : (
-                    authorId && (
-                      <LevelBadge 
-                        level={getUserDisplayLevel(authorId).level} 
-                        size="xs" 
-                        variant="subtle"
-                        showIcon={true}
-                      />
-                    )
+                    authorId && <CardAuthorLevel authorId={authorId} />
                   )}
                 </HStack>
                 <Text fontSize="xs" color={colorMode === 'dark' ? '#7e7e87' : '#626269'}>

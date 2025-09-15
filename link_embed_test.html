@@ -1,0 +1,116 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>링크 임베드 테스트</title>
+    <style>
+        body { font-family: -apple-system, sans-serif; margin: 40px; line-height: 1.6; }
+        .test-section { margin: 40px 0; padding: 20px; border: 1px solid #ccc; border-radius: 8px; }
+        .original { background: #f0f8ff; }
+        .processed { background: #f0fff0; }
+    </style>
+</head>
+<body>
+    <h1>🔍 링크 임베드 처리 테스트</h1>
+    
+    <div class="test-section original">
+        <h2>📝 원본 콘텐츠 (WYSIWYG 에디터 출력)</h2>
+        <div>
+<p>안녕하세요, 이 글에서는 링크 임베드를 테스트합니다.</p>
+<p><a href="https://www.youtube.com/watch?v=dQw4w9WgXcQ" target="_blank" rel="noopener noreferrer">테스트 유튜브 비디오</a></p>
+<p><a href="https://www.google.com" target="_blank" rel="noopener noreferrer">구글 홈페이지</a></p>
+<p>일반 텍스트입니다.</p>
+</div>
+    </div>
+    
+    <div class="test-section processed">
+        <h2>✨ 처리된 콘텐츠 (임베드 적용 후)</h2>
+        <div>
+<p>안녕하세요, 이 글에서는 링크 임베드를 테스트합니다.</p>
+<p>
+            <p><a href="https://www.youtube.com/watch?v=dQw4w9WgXcQ" target="_blank" rel="noopener noreferrer" style="color: #7A5AF8; text-decoration: underline;">테스트 유튜브 비디오</a></p>
+            <div class="youtube-embed-container" style="position: relative; padding-bottom: 56.25%; height: 0; margin: 16px 0; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);">
+              <iframe 
+                src="https://www.youtube.com/embed/dQw4w9WgXcQ?rel=0&modestbranding=1&showinfo=0" 
+                style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none;"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowfullscreen
+                loading="lazy"
+                frameborder="0">
+              </iframe>
+            </div>
+          </p>
+<p>
+          <div class="link-embed-container" onclick="window.open('https://www.google.com', '_blank', 'noopener,noreferrer');" style="
+            border: 2px solid #e4e4e5;
+            border-radius: 8px;
+            padding: 16px;
+            margin: 16px 0;
+            background-color: #f8f9fa;
+            transition: all 0.2s ease;
+            cursor: pointer;
+          ">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+              <div style="
+                width: 32px;
+                height: 32px;
+                background: linear-gradient(135deg, #7A5AF8, #A78BFA);
+                border-radius: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: white;
+                font-weight: 600;
+                font-size: 14px;
+              ">
+                🔗
+              </div>
+              <div style="flex: 1; min-width: 0;">
+                <div style="
+                  font-weight: 600;
+                  color: #2c2c35;
+                  font-size: 16px;
+                  line-height: 1.3;
+                  margin-bottom: 4px;
+                  word-break: break-word;
+                ">
+                  구글 홈페이지
+                </div>
+                <div style="
+                  color: #626269;
+                  font-size: 14px;
+                  word-break: break-all;
+                ">
+                  https://www.google.com
+                </div>
+              </div>
+            </div>
+            <div style="
+              color: #9e9ea4;
+              font-size: 12px;
+              text-align: right;
+            ">
+              클릭하여 링크 열기 →
+            </div>
+          </div>
+        </p>
+<p>일반 텍스트입니다.</p>
+</div>
+    </div>
+    
+    <script>
+        console.log('🔍 브라우저에서 링크 임베드 테스트');
+        console.log('원본 콘텐츠:', "\n<p>안녕하세요, 이 글에서는 링크 임베드를 테스트합니다.</p>\n<p><a href=\"https://www.youtube.com/watch?v=dQw4w9WgXcQ\" target=\"_blank\" rel=\"noopener noreferrer\">테스트 유튜브 비디오</a></p>\n<p><a href=\"https://www.google.com\" target=\"_blank\" rel=\"noopener noreferrer\">구글 홈페이지</a></p>\n<p>일반 텍스트입니다.</p>\n");
+        console.log('처리된 콘텐츠:', "\n<p>안녕하세요, 이 글에서는 링크 임베드를 테스트합니다.</p>\n<p>\n            <p><a href=\"https://www.youtube.com/watch?v=dQw4w9WgXcQ\" target=\"_blank\" rel=\"noopener noreferrer\" style=\"color: #7A5AF8; text-decoration: underline;\">테스트 유튜브 비디오</a></p>\n            <div class=\"youtube-embed-container\" style=\"position: relative; padding-bottom: 56.25%; height: 0; margin: 16px 0; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);\">\n              <iframe \n                src=\"https://www.youtube.com/embed/dQw4w9WgXcQ?rel=0&modestbranding=1&showinfo=0\" \n                style=\"position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none;\"\n                allow=\"accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture\"\n                allowfullscreen\n                loading=\"lazy\"\n                frameborder=\"0\">\n              </iframe>\n            </div>\n          </p>\n<p>\n          <div class=\"link-embed-container\" onclick=\"window.open('https://www.google.com', '_blank', 'noopener,noreferrer');\" style=\"\n            border: 2px solid #e4e4e5;\n            border-radius: 8px;\n            padding: 16px;\n            margin: 16px 0;\n            background-color: #f8f9fa;\n            transition: all 0.2s ease;\n            cursor: pointer;\n          \">\n            <div style=\"display: flex; align-items: center; gap: 12px; margin-bottom: 8px;\">\n              <div style=\"\n                width: 32px;\n                height: 32px;\n                background: linear-gradient(135deg, #7A5AF8, #A78BFA);\n                border-radius: 8px;\n                display: flex;\n                align-items: center;\n                justify-content: center;\n                color: white;\n                font-weight: 600;\n                font-size: 14px;\n              \">\n                🔗\n              </div>\n              <div style=\"flex: 1; min-width: 0;\">\n                <div style=\"\n                  font-weight: 600;\n                  color: #2c2c35;\n                  font-size: 16px;\n                  line-height: 1.3;\n                  margin-bottom: 4px;\n                  word-break: break-word;\n                \">\n                  구글 홈페이지\n                </div>\n                <div style=\"\n                  color: #626269;\n                  font-size: 14px;\n                  word-break: break-all;\n                \">\n                  https://www.google.com\n                </div>\n              </div>\n            </div>\n            <div style=\"\n              color: #9e9ea4;\n              font-size: 12px;\n              text-align: right;\n            \">\n              클릭하여 링크 열기 →\n            </div>\n          </div>\n        </p>\n<p>일반 텍스트입니다.</p>\n");
+        
+        // 링크 카드 클릭 테스트
+        document.addEventListener('click', function(e) {
+            if (e.target.closest('.link-embed-container')) {
+                console.log('링크 카드 클릭됨:', e.target.closest('.link-embed-container'));
+            }
+        });
+    </script>
+</body>
+</html>

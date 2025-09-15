@@ -27,6 +27,7 @@ import WYSIWYGEditor from '../components/WYSIWYGEditor';
 // 태그는 API 연결 후 동적으로 로드 예정
 import { loungeService } from '../services/supabaseDataService';
 import { useAuth } from '../contexts/AuthContext';
+import { databaseUserLevelService } from '../services/databaseUserLevelService';
 import TagSelector from '../components/TagSelector';
 import PromotionBadge from '../components/PromotionBadge';
 
@@ -85,6 +86,19 @@ const LoungeNew: React.FC = () => {
         status: "success",
         duration: 3000,
       });
+      
+      // 글 작성 후 사용자 레벨 업데이트 트리거 (백그라운드에서 실행)
+      if (user?.id && !user.isAdmin) {
+        console.log('📝 라운지 글 작성 완료, 레벨 업데이트 트리거 중...');
+        setTimeout(async () => {
+          try {
+            await databaseUserLevelService.updateUserActivity(user.id, true);
+            console.log('✅ 라운지 글 작성 후 레벨 업데이트 완료');
+          } catch (error) {
+            console.warn('⚠️ 라운지 글 작성 후 레벨 업데이트 실패:', error);
+          }
+        }, 1000); // 글 작성 후 1초 후 레벨 업데이트
+      }
       
       // 라운지 목록으로 이동 (state로 새로고침 신호 전달)
       navigate('/lounge', { 

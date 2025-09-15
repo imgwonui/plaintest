@@ -37,7 +37,9 @@ const createOptimizedSupabaseClient = (): SupabaseClient => {
       // HTTP 요청 최적화
       headers: {
         'x-client-info': 'plain-app@1.0.0',
-        'Cache-Control': 'max-age=300' // 5분 캐시
+        'Cache-Control': 'max-age=300', // 5분 캐시
+        'Accept': 'application/json',  // ✅ 406 에러 방지용 Accept 헤더 추가
+        'Content-Type': 'application/json'
       },
       fetch: (url, options = {}) => {
         // 요청 시간 초과 설정 (10초)

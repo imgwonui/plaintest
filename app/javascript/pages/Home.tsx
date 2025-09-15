@@ -26,12 +26,82 @@ import { WebAnalytics } from '../components/Analytics';
 import { storyService, loungeService, userService, testConnection } from '../services/supabaseDataService';
 import { optimizedStoryService, optimizedLoungeService } from '../services/optimizedDataService';
 import LevelBadge from '../components/UserLevel/LevelBadge';
-import { getUserDisplayLevel } from '../services/userLevelService';
+import { getDatabaseUserLevel } from '../services/databaseUserLevelService';
 import OptimizedImage from '../components/OptimizedImage';
 import { preloadHomeImages } from '../utils/imagePreloader';
 import { cacheService } from '../services/cacheService';
 import { LastKnownGoodDataManager } from '../utils/connectionUtils';
 import ConnectionStatusIndicator, { useConnectionStatus } from '../components/ConnectionStatusIndicator';
+
+// 홈페이지 포스트 작성자 실시간 레벨 표시 컴포넌트
+const HomePostAuthorLevel: React.FC<{ authorId: string }> = ({ authorId }) => {
+  const [authorLevel, setAuthorLevel] = useState(1);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // 초기 레벨 로드
+  useEffect(() => {
+    const loadLevel = async () => {
+      try {
+        setIsLoading(true);
+        const levelData = await getDatabaseUserLevel(authorId);
+        setAuthorLevel(levelData.level);
+      } catch (error) {
+        console.warn('홈 포스트 작성자 레벨 로드 실패:', error);
+        setAuthorLevel(1);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (authorId) {
+      loadLevel();
+    }
+  }, [authorId]);
+
+  // 레벨업 이벤트 리스너
+  useEffect(() => {
+    const handleLevelUp = (event: CustomEvent) => {
+      if (event.detail.userId === authorId) {
+        console.log(`📈 홈 포스트 작성자 레벨업 반영: ${authorId} LV${event.detail.oldLevel} → LV${event.detail.newLevel}`);
+        setAuthorLevel(event.detail.newLevel);
+      }
+    };
+
+    // 캐시 무효화 이벤트 리스너
+    const handleCacheInvalidated = (event: CustomEvent) => {
+      if (event.detail.userId === authorId) {
+        console.log(`🔄 홈 포스트 작성자 캐시 무효화됨, 레벨 새로고침: ${authorId}`);
+        getDatabaseUserLevel(authorId).then(levelData => {
+          setAuthorLevel(levelData.level);
+        }).catch(error => {
+          console.warn('홈 포스트 작성자 캐시 무효화 후 레벨 로드 실패:', error);
+        });
+      }
+    };
+
+    if (typeof window !== 'undefined' && authorId) {
+      window.addEventListener('userLevelUp', handleLevelUp as EventListener);
+      window.addEventListener('userCacheInvalidated', handleCacheInvalidated as EventListener);
+      return () => {
+        window.removeEventListener('userLevelUp', handleLevelUp as EventListener);
+        window.removeEventListener('userCacheInvalidated', handleCacheInvalidated as EventListener);
+      };
+    }
+  }, [authorId]);
+
+  if (isLoading) {
+    return <LevelBadge level={1} size="xs" variant="subtle" showIcon={true} />;
+  }
+
+  return (
+    <LevelBadge 
+      level={authorLevel} 
+      size="xs" 
+      variant="subtle"
+      showIcon={true}
+    />
+  );
+};
 
 const Home: React.FC = () => {
   const { colorMode } = useColorMode();
@@ -312,7 +382,9 @@ const Home: React.FC = () => {
                     color={colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'}
                     lineHeight="1.3"
                     transition="color 0.3s ease"
-                    maxW="100%"
+                    maxW="95%"
+                    wordBreak="keep-all"
+                    overflowWrap="break-word"
                   >
                     {currentWeeklyTopic.title}
                   </Heading>
@@ -321,7 +393,9 @@ const Home: React.FC = () => {
                     color={colorMode === 'dark' ? '#c3c3c6' : '#4d4d59'}
                     fontSize="15px"
                     lineHeight="1.6"
-                    maxW="90%"
+                    maxW="95%"
+                    wordBreak="keep-all"
+                    overflowWrap="break-word"
                   >
                     {currentWeeklyTopic.summary}
                   </Text>
@@ -347,7 +421,7 @@ const Home: React.FC = () => {
                       fontStyle="italic" 
                       color={colorMode === 'dark' ? '#9e9ea4' : '#626269'}
                     >
-                      읽는 데에 {currentWeeklyTopic.read_time}분 정도 걸려요.
+                      읽는 데에 {currentWeeklyTopic.read_time || Math.max(1, Math.ceil((currentWeeklyTopic.content?.length || 300) / 200))}분 정도 걸려요.
                     </Text>
                   </VStack>
                 </VStack>
@@ -506,14 +580,7 @@ const Home: React.FC = () => {
                     <HStack spacing={4} fontSize="xs" color={colorMode === 'dark' ? '#7e7e87' : '#626269'}>
                       <HStack spacing={2} align="center">
                         <Text>{post.author_name}</Text>
-                        {post.author_id && (
-                          <LevelBadge 
-                            level={getUserDisplayLevel(post.author_id).level} 
-                            size="xs" 
-                            variant="subtle"
-                            showIcon={true}
-                          />
-                        )}
+                        {post.author_id && <HomePostAuthorLevel authorId={post.author_id} />}
                       </HStack>
                       <Text>·</Text>
                       <Text>{new Date(post.created_at).toLocaleDateString('ko-KR', {

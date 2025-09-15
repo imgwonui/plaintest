@@ -148,7 +148,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             // 백그라운드에서 DB 동기화 (사용자 경험 방해하지 않음)
             setTimeout(async () => {
               try {
-                const latestUser = await userService.getCurrentUserById(parsedUser.id);
+                const latestUser = await userService.getById(parsedUser.id);
                 if (latestUser) {
                   console.log('🔄 백그라운드 DB 동기화:', latestUser.name);
                   setUser(latestUser);
@@ -209,90 +209,68 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       // 일관된 사용자 ID 사용 - 같은 provider로 로그인시 항상 동일한 ID
       const userId = getOrCreateUserId(provider);
-      const userName = provider === 'kakao' ? '김인사' : 'John Doe';
-      const userEmail = provider === 'kakao' ? 'kim@plain.com' : 'john@plain.com';
       
-      // 로컬 사용자 상태 설정
-      const mockUser: User = {
-        id: userId,
-        name: userName,
-        email: userEmail,
-        provider,
-        avatar: undefined,
-        isAdmin: false,
-        isVerified: provider === 'google'
-      };
+      console.log('🔍 로그인 시도:', { provider, userId });
       
-      // 먼저 상태 업데이트
-      setUser(mockUser);
-      console.log('🔐 로그인되었습니다:', mockUser.name, provider === 'google' ? '(인사담당자 인증됨)' : '');
-      
-      // 로컬 스토리지에 사용자 정보 저장 (새로고침 시 세션 유지용)
+      // ❗ 중요: 오직 DB에서만 사용자 데이터 가져오기 - 하드코딩 금지
       try {
-        localStorage.setItem('plain_user', JSON.stringify(mockUser));
-        console.log('💾 로컬 스토리지에 세션 저장됨');
-      } catch (storageError) {
-        console.warn('⚠️ 로컬 스토리지 저장 실패:', storageError);
-      }
-      
-      // 백그라운드에서 DB에 사용자 생성/업데이트 시도
-      try {
-        let dbUser;
-        const existingUser = await userService.getCurrentUserById(userId);
+        console.log(`🔍 DB에서 사용자 검색 중... ID: ${userId}`);
+        const existingUser = await userService.getById(userId);
+        
+        console.log('🔍 DB 검색 결과:', existingUser ? `사용자 발견: ${existingUser.name}` : '사용자 없음');
         
         if (existingUser) {
-          // 기존 사용자가 있으면 로그인 시간만 업데이트하고 기존 데이터 유지
-          console.log('✅ 기존 사용자 발견, 데이터 복원 중...', existingUser.name);
-          dbUser = await userService.updateUser(userId, {
+          // 기존 사용자 발견 - DB 데이터 그대로 사용 (하드코딩 없음)
+          console.log('✅ DB에서 기존 사용자 발견:', existingUser.name);
+          
+          // 로그인 시간만 업데이트하고 기존 데이터는 건드리지 않음
+          const updatedUser = await userService.updateProfile(userId, {
             last_login_at: new Date().toISOString()
           });
           
-          // 기존 사용자 데이터를 우선시 (프로필 설정 등 유지)
-          if (dbUser) {
-            console.log('🔄 기존 사용자 데이터 복원됨:', {
-              name: dbUser.name,
-              email: dbUser.email,
-              isVerified: dbUser.isVerified,
-              emailNotifications: dbUser.emailNotifications
-            });
-          }
-        } else {
-          // 새 사용자 생성
-          console.log('🆕 새 사용자 생성 중...');
-          dbUser = await userService.createUser({
-            id: userId,
-            name: userName,
-            email: userEmail,
-            provider: provider as 'kakao' | 'google',
-            is_admin: false,
-            is_verified: provider === 'google'
-          });
-        }
-        
-        // DB에서 가져온 실제 사용자 정보로 업데이트 (기존 데이터 보존)
-        if (dbUser) {
-          setUser(dbUser);
+          // DB에서 가져온 실제 사용자 데이터 사용
+          const finalUser = updatedUser || existingUser;
+          setUser(finalUser);
+          
           try {
-            localStorage.setItem('plain_user', JSON.stringify(dbUser));
-            console.log('📝 데이터베이스 사용자 정보 동기화됨:', dbUser.name);
+            localStorage.setItem('plain_user', JSON.stringify(finalUser));
+            console.log('🔄 DB 사용자 데이터 복원 완료:', finalUser.name);
           } catch (storageError) {
-            console.warn('⚠️ DB 동기화 후 로컬 스토리지 저장 실패:', storageError);
+            console.warn('⚠️ 로컬 스토리지 저장 실패:', storageError);
           }
+          
+          return; // DB 데이터 복원 완료
+        } else {
+          // DB에 사용자가 없음 - 김흑흑 사용자가 없는 이유 확인
+          console.error('❌ DB에 사용자 데이터가 없습니다!');
+          console.error('🔍 찾은 사용자 ID:', userId);
+          console.error('🔍 예상 사용자: 김흑흑');
+          console.error('💡 혹시 사용자 ID가 잘못되었나요? localStorage 확인이 필요합니다.');
+          
+          // localStorage에 저장된 ID 확인
+          try {
+            const storedKakaoId = localStorage.getItem('plain_user_id_kakao');
+            console.log('📦 localStorage에 저장된 카카오 ID:', storedKakaoId);
+          } catch (e) {
+            console.error('localStorage 접근 실패:', e);
+          }
+          
+          throw new Error(`김흑흑 사용자를 찾을 수 없습니다. 사용자 ID: ${userId}`);
         }
       } catch (dbError) {
-        console.warn('데이터베이스 사용자 생성/업데이트 실패 (로컬 로그인 유지됨):', dbError);
-        // DB 실패 시에도 로컬 상태는 유지하여 앱 사용 가능하게 함
+        console.error('❌ 데이터베이스 연결 실패:', dbError);
+        throw new Error('데이터베이스 연결에 실패했습니다. 다시 시도해주세요.');
       }
     } catch (error) {
-      console.error('로그인 실패:', error);
+      console.error('❌ 로그인 실패:', error);
       throw error;
     }
   };
 
   const adminLogin = async () => {
     try {
-      // 고정된 관리자 ID 사용 (랜덤 ID 생성 방지)
-      const adminId = 'admin-fixed-id-2024';
+      // 유효한 UUID 형식의 관리자 ID 사용
+      const adminId = '00000000-0000-4000-8000-000000000001'; // 고정된 UUID v4 형식
       
       // 로컬 관리자 상태 설정
       const adminUser: User = {
@@ -325,12 +303,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // 백그라운드에서 DB에 관리자 생성/업데이트 시도
       try {
         let dbUser;
-        const existingUser = await userService.getCurrentUserById(adminId);
+        const existingUser = await userService.getById(adminId);
         
         if (existingUser) {
           // 기존 사용자가 있으면 관리자 권한으로 업데이트
           console.log('✅ 기존 사용자 발견, 관리자로 업데이트 중...', existingUser.name);
-          dbUser = await userService.updateUser(adminId, {
+          dbUser = await userService.updateProfile(adminId, {
             name: '관리자',
             email: 'admin@plain.com', 
             provider: 'admin',

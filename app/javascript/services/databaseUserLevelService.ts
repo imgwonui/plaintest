@@ -1,4 +1,5 @@
 // DB 우선 사용자 레벨 시스템 관리 서비스
+import { supabase } from '../lib/supabaseClient';
 import { LEVEL_CONFIG as levelConfig, LevelUtils } from '../data/levelConfig';
 import { userService, interactionService } from './supabaseDataService';
 import { optimizedQueries, performanceMonitor } from '../lib/supabaseOptimizer';
@@ -29,6 +30,8 @@ class DatabaseUserLevelService {
   // 사용자 레벨 데이터 가져오기 (DB 우선, 세션 캐시 사용)
   async getUserLevel(userId: string): Promise<DatabaseUserLevelData> {
     try {
+      console.log(`🔍 사용자 레벨 조회 시작: ${userId}`);
+      
       // 1. 캐시에서 먼저 확인 (5분 이내 데이터만)
       const cached = this.getCachedUserLevel(userId);
       const now = Date.now();
@@ -37,22 +40,48 @@ class DatabaseUserLevelService {
       if (cached && cached.lastSyncAt) {
         const cacheTime = new Date(cached.lastSyncAt).getTime();
         if (now - cacheTime < cacheValidDuration) {
-          console.log(`💨 캐시된 레벨 데이터 사용: ${userId}`);
+          console.log(`💨 캐시된 레벨 데이터 사용: ${userId} LV${cached.level}`);
           return cached;
+        } else {
+          console.log(`⏰ 캐시 만료됨: ${userId}, DB에서 새로 조회`);
         }
       }
 
-      // 2. DB에서 사용자 레벨 데이터 조회 (최적화된 쿼리 사용)
+      // 2. DB에서 사용자 레벨 데이터 조회 (직접 Supabase 쿼리)
       console.log(`🔍 DB에서 사용자 레벨 조회: ${userId}`);
       const startTime = Date.now();
-      const userLevels = await userService.getUserLevelData(userId);
+      
+      const { data: userLevels, error } = await supabase
+        .from('user_levels')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+      
       const queryTime = Date.now() - startTime;
-      performanceMonitor.recordQueryTime('getUserLevelData', queryTime);
+      console.log(`⏱️ DB 쿼리 시간: ${queryTime}ms`);
+      performanceMonitor.recordQueryTime('getUserLevel', queryTime);
       
       let userData: DatabaseUserLevelData;
       
-      if (userLevels) {
+      if (error) {
+        if (error.code === 'PGRST116') {
+          // DB에 데이터가 없는 경우 새로 생성
+          console.log(`❌ DB에 레벨 데이터 없음: ${userId}, 새로 생성 시도`);
+          try {
+            userData = await this.createNewUserLevel(userId);
+            console.log(`✅ 새 레벨 데이터 생성 성공: ${userId} LV${userData.level}`);
+          } catch (createError) {
+            console.error(`❌ 새 레벨 데이터 생성 실패: ${userId}`, createError);
+            // 생성 실패시 기본값 반환
+            userData = this.getDefaultUserLevel(userId);
+          }
+        } else {
+          console.error('getUserLevel DB 에러:', error);
+          throw error;
+        }
+      } else if (userLevels) {
         // DB에 데이터가 있는 경우
+        console.log(`📊 DB 조회 결과:`, userLevels);
         userData = {
           userId,
           currentExp: userLevels.current_exp || 0,
@@ -70,11 +99,11 @@ class DatabaseUserLevelService {
           lastSyncAt: new Date().toISOString()
         };
         
-        console.log(`✅ DB에서 레벨 데이터 로드: LV${userData.level} (${userData.currentExp} EXP)`);
+        console.log(`✅ DB에서 레벨 데이터 로드 완료: ${userId} LV${userData.level} (${userData.currentExp} EXP)`);
       } else {
-        // DB에 데이터가 없는 경우 새로 생성
-        console.log(`🆕 새 사용자 레벨 데이터 생성: ${userId}`);
-        userData = await this.createNewUserLevel(userId);
+        // 데이터가 없고 에러도 없는 경우 (이론적으로 발생하지 않아야 함)
+        console.warn(`⚠️ 예상치 못한 상황: ${userId} - 데이터도 에러도 없음`);
+        userData = this.getDefaultUserLevel(userId);
       }
 
       // 3. 캐시에 저장
@@ -98,6 +127,8 @@ class DatabaseUserLevelService {
 
   // 새 사용자 레벨 데이터 생성
   private async createNewUserLevel(userId: string): Promise<DatabaseUserLevelData> {
+    console.log(`🆕 새 사용자 레벨 데이터 생성 시작: ${userId}`);
+    
     const defaultData: DatabaseUserLevelData = {
       userId,
       currentExp: 0,
@@ -116,13 +147,33 @@ class DatabaseUserLevelService {
 
     try {
       // DB에 저장
+      console.log(`💾 DB에 레벨 데이터 저장 시도: ${userId}`);
       await this.saveUserLevelToDB(defaultData);
-      console.log(`✅ 새 사용자 레벨 데이터 DB 저장 완료: ${userId}`);
+      console.log(`✅ 새 사용자 레벨 데이터 DB 저장 완료: ${userId} LV${defaultData.level}`);
     } catch (error) {
-      console.warn('⚠️ 새 사용자 레벨 DB 저장 실패:', error);
+      console.error('❌ 새 사용자 레벨 DB 저장 실패:', userId, error);
+      throw error; // 에러를 다시 던져서 상위에서 처리하도록
     }
 
     return defaultData;
+  }
+
+  // 글로벌 캐시 무효화 (특정 사용자의 모든 레벨 캐시 삭제)
+  invalidateAllUserCaches(userId: string): void {
+    try {
+      // 1. 해당 사용자의 레벨 캐시 무효화
+      this.invalidateCache(userId);
+      
+      // 2. 브라우저 이벤트 발생 - 다른 컴포넌트들이 캐시를 새로 고칠 수 있도록
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('userCacheInvalidated', {
+          detail: { userId, timestamp: Date.now() }
+        }));
+        console.log(`🗑️ 전역 캐시 무효화: ${userId}`);
+      }
+    } catch (error) {
+      console.warn('전역 캐시 무효화 실패:', error);
+    }
   }
 
   // 사용자 활동 업데이트 및 경험치 재계산
@@ -159,6 +210,9 @@ class DatabaseUserLevelService {
       
       // 캐시 업데이트
       this.cacheUserLevel(userId, userData);
+      
+      // 전역 캐시 무효화 (다른 컴포넌트들이 새로운 레벨을 반영할 수 있도록)
+      this.invalidateAllUserCaches(userId);
 
       return {
         leveledUp,
@@ -176,22 +230,49 @@ class DatabaseUserLevelService {
     try {
       console.log(`📊 실제 활동 통계 계산 중: ${userId}`);
       
-      // 병렬로 모든 통계 조회
-      const [
-        userStories,
-        userLoungePosts,
-        userBookmarks,
-        userTotalLikes
-      ] = await Promise.all([
+      // 병렬로 모든 통계 조회 (각각 await로 처리)
+      let userStories = [];
+      let userLoungePosts = [];
+      let userBookmarks = [];
+      let userTotalLikes = 0;
+
+      try {
         // 사용자가 작성한 Story 수
-        userService.getStoriesByAuthor(userId).then(response => response?.stories || []),
+        const storiesResponse = await userService.getStoriesByAuthor(userId);
+        userStories = storiesResponse?.stories || [];
+        console.log(`📖 Story 조회 완료: ${userStories.length}개`);
+      } catch (error) {
+        console.error('Story 조회 실패:', error);
+        userStories = [];
+      }
+
+      try {
         // 사용자가 작성한 Lounge 글 수  
-        userService.getLoungePostsByAuthor(userId).then(response => response?.posts || []),
+        const loungeResponse = await userService.getLoungePostsByAuthor(userId);
+        userLoungePosts = loungeResponse?.posts || [];
+        console.log(`🏛️ Lounge 조회 완료: ${userLoungePosts.length}개`);
+      } catch (error) {
+        console.error('Lounge 조회 실패:', error);
+        userLoungePosts = [];
+      }
+
+      try {
         // 사용자의 북마크 수
-        interactionService.getUserBookmarks(userId).then(bookmarks => bookmarks || []),
+        userBookmarks = await interactionService.getUserBookmarks(userId) || [];
+        console.log(`🔖 북마크 조회 완료: ${userBookmarks.length}개`);
+      } catch (error) {
+        console.error('북마크 조회 실패:', error);
+        userBookmarks = [];
+      }
+
+      try {
         // 사용자가 받은 총 좋아요 수
-        this.calculateUserReceivedLikes(userId)
-      ]);
+        userTotalLikes = await this.calculateUserReceivedLikes(userId);
+        console.log(`❤️ 받은 좋아요 조회 완료: ${userTotalLikes}개`);
+      } catch (error) {
+        console.error('좋아요 조회 실패:', error);
+        userTotalLikes = 0;
+      }
 
       const stats = {
         totalLikes: userTotalLikes,
@@ -220,11 +301,27 @@ class DatabaseUserLevelService {
   // 사용자가 받은 총 좋아요 수 계산
   private async calculateUserReceivedLikes(userId: string): Promise<number> {
     try {
-      // 사용자의 모든 글 ID 수집
-      const [stories, loungePosts] = await Promise.all([
-        userService.getStoriesByAuthor(userId).then(response => response?.stories || []),
-        userService.getLoungePostsByAuthor(userId).then(response => response?.posts || [])
-      ]);
+      console.log(`❤️ 사용자가 받은 좋아요 수 계산 시작: ${userId}`);
+      
+      // 사용자의 모든 글 ID 수집 (개별 처리)
+      let stories = [];
+      let loungePosts = [];
+
+      try {
+        const storiesResponse = await userService.getStoriesByAuthor(userId);
+        stories = storiesResponse?.stories || [];
+      } catch (error) {
+        console.error('좋아요 계산용 Story 조회 실패:', error);
+        stories = [];
+      }
+
+      try {
+        const loungeResponse = await userService.getLoungePostsByAuthor(userId);
+        loungePosts = loungeResponse?.posts || [];
+      } catch (error) {
+        console.error('좋아요 계산용 Lounge 조회 실패:', error);
+        loungePosts = [];
+      }
 
       let totalLikes = 0;
 
@@ -262,17 +359,34 @@ class DatabaseUserLevelService {
   // DB에 사용자 레벨 데이터 저장
   private async saveUserLevelToDB(userData: DatabaseUserLevelData): Promise<void> {
     try {
-      await userService.syncSessionLevelToDatabase(
-        userData.userId,
-        userData.level,
-        userData.currentExp,
-        {
-          totalLikes: userData.stats.totalLikes,
-          totalPosts: userData.stats.totalPosts,
-          totalComments: userData.stats.totalComments
-        }
-      );
-      console.log(`💾 레벨 데이터 DB 저장 완료: ${userData.userId}`);
+      console.log(`💾 레벨 데이터 DB 저장 시도: ${userData.userId}`, userData);
+      
+      // Supabase upsert를 사용하여 데이터 저장/업데이트
+      const { error } = await supabase
+        .from('user_levels')
+        .upsert({
+          user_id: userData.userId,
+          current_exp: userData.currentExp,
+          level: userData.level,
+          total_likes: userData.stats.totalLikes,
+          story_promotions: userData.stats.storyPromotions,
+          total_bookmarks: userData.stats.totalBookmarks,
+          total_posts: userData.stats.totalPosts,
+          total_comments: userData.stats.totalComments,
+          excellent_posts: userData.stats.excellentPosts,
+          achievements: userData.achievements,
+          last_level_up: userData.lastLevelUp,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'user_id'
+        });
+
+      if (error) {
+        console.error('💾 레벨 데이터 DB 저장 오류:', error);
+        throw error;
+      }
+      
+      console.log(`✅ 레벨 데이터 DB 저장 완료: ${userData.userId} LV${userData.level}`);
     } catch (error) {
       console.error('saveUserLevelToDB 실패:', error);
       throw error;
@@ -337,6 +451,23 @@ class DatabaseUserLevelService {
     } catch (error) {
       console.warn('캐시 무효화 실패:', error);
     }
+  }
+
+  // 캐시 무효화 이벤트 리스너
+  onCacheInvalidated(callback: (data: { userId: string; timestamp: number }) => void): () => void {
+    const handler = (event: CustomEvent) => {
+      callback(event.detail);
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('userCacheInvalidated', handler as EventListener);
+      
+      return () => {
+        window.removeEventListener('userCacheInvalidated', handler as EventListener);
+      };
+    }
+    
+    return () => {};
   }
 
   // 레벨업 이벤트 리스너

@@ -1082,9 +1082,15 @@ const StoryDetail: React.FC = () => {
             dangerouslySetInnerHTML={{
               __html: (() => {
                 const content = story.content;
+                console.log('🔍 스토리 콘텐츠 렌더링 시작:', { 
+                  contentLength: content?.length,
+                  containsYoutube: content?.includes('youtube'),
+                  containsEmbedContainer: content?.includes('embed-container'),
+                  firstChars: content?.substring(0, 200) 
+                });
                 
                 // HTML 콘텐츠인지 확인 (WYSIWYG 에디터로 작성된 경우)
-                const isHTML = content.includes('<p>') || content.includes('<h1>') || content.includes('<span style=');
+                const isHTML = content.includes('<p>') || content.includes('<h1>') || content.includes('<span style=') || content.includes('<div');
                 
                 // ID 생성 및 중복 방지 함수 (한글 지원)
                 const usedHtmlIds = new Set<string>();
@@ -1114,9 +1120,21 @@ const StoryDetail: React.FC = () => {
                 };
                 
                 if (isHTML) {
-                  // HTML 콘텐츠 - H1, H2 태그에 ID 추가 및 형광펜 최적화
-                  // 형광펜 배경색이 밝기 때문에 어두운 텍스트가 더 잘 보임
-                  return content
+                  console.log('✅ HTML 콘텐츠로 인식됨, 임베드 처리 시작');
+                  
+                  // HTML 엔티티 디코딩 함수
+                  const decodeHtmlEntities = (str: string) => {
+                    return str
+                      .replace(/&amp;/g, '&')
+                      .replace(/&lt;/g, '<')
+                      .replace(/&gt;/g, '>')
+                      .replace(/&quot;/g, '"')
+                      .replace(/&#39;/g, "'");
+                  };
+                  
+                  // HTML 콘텐츠 처리 - 헤딩 ID 추가 및 링크 임베드 처리
+                  let processedContent = decodeHtmlEntities(content)
+                    // 형광펜 스타일 최적화
                     .replace(/background-color:\s*rgb\(254,\s*240,\s*138\)/g, 'background-color: #fef08a; color: #1f2937')
                     .replace(/background-color:\s*rgb\(187,\s*247,\s*208\)/g, 'background-color: #bbf7d0; color: #1f2937')
                     .replace(/background-color:\s*rgb\(191,\s*219,\s*254\)/g, 'background-color: #bfdbfe; color: #1f2937')
@@ -1130,7 +1148,168 @@ const StoryDetail: React.FC = () => {
                       const id = generateHtmlId(text);
                       return `<h2 id="${id}">${text}</h2>`;
                     });
+                  
+                  // 유튜브 링크를 임베드로 변환
+                  if (processedContent.includes('youtube.com') || processedContent.includes('youtu.be')) {
+                    console.log('🎥 유튜브 링크 감지됨, 임베드 변환 시도 중...');
+                    
+                    // 더 다양한 패턴의 유튜브 링크 매칭을 위한 개선된 정규식
+                    const youtubePatterns = [
+                      // 패턴 1: <p> 태그 내 평문 YouTube URL (가장 일반적인 케이스)
+                      /(<p[^>]*>.*?)(https?:\/\/(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)[^\s<]*)(.*?<\/p>)/g,
+                      // 패턴 2: <a href="youtube링크">텍스트</a>
+                      /<a[^>]*href=["'](https?:\/\/(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]+))[^"']*["'][^>]*>([^<]+)<\/a>/g,
+                      // 패턴 3: 추가 링크 패턴들
+                      /<a[^>]*href=["'](https?:\/\/(www\.)?youtube\.com\/watch\?v=([\w-]+)[^"']*)["'][^>]*>([^<]+)<\/a>/g,
+                      /<a[^>]*href=["'](https?:\/\/youtu\.be\/([\w-]+)[^"']*)["'][^>]*>([^<]+)<\/a>/g
+                    ];
+                    
+                    let matchFound = false;
+                    youtubePatterns.forEach((pattern, index) => {
+                      processedContent = processedContent.replace(pattern, (match, ...args) => {
+                        let url, videoId, text, beforeContent = '', afterContent = '';
+                        
+                        if (index === 0) {
+                          // 패턴 1: (<p[^>]*>.*?)(youtube URL)(.*?<\/p>)
+                          [beforeContent, url, , , , , afterContent] = args;
+                          text = url; // 평문 URL은 URL 자체가 텍스트
+                        } else {
+                          // 패턴 2-4: <a> 태그 패턴들
+                          url = args[0];
+                          text = args[args.length - 2]; // 텍스트는 마지막에서 두 번째
+                        }
+                        
+                        // 비디오 ID 추출
+                        if (url.includes('youtu.be/')) {
+                          videoId = url.split('youtu.be/')[1].split('?')[0].split('&')[0];
+                        } else if (url.includes('youtube.com/watch?v=')) {
+                          videoId = url.split('v=')[1].split('&')[0];
+                        } else if (url.includes('youtube.com/embed/')) {
+                          videoId = url.split('embed/')[1].split('?')[0].split('&')[0];
+                        }
+                        
+                        if (videoId && videoId.length >= 10) {
+                          console.log(`🎥 패턴 ${index + 1}로 유튜브 링크 매칭 성공:`, { url, videoId, text, match });
+                          matchFound = true;
+                          
+                          if (index === 0) {
+                            // 패턴 1: <p> 태그 내 평문 URL 교체
+                            return `${beforeContent}<a href="${url}" target="_blank" rel="noopener noreferrer" style="color: ${colorMode === 'dark' ? '#A78BFA' : '#7A5AF8'}; text-decoration: underline;">${url}</a>${afterContent}
+                              <div class="youtube-embed-container" style="position: relative; padding-bottom: 56.25%; height: 0; margin: 16px 0; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0, 0, 0, ${colorMode === 'dark' ? '0.3' : '0.1'});">
+                                <iframe 
+                                  src="https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1&showinfo=0" 
+                                  style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none;"
+                                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                  allowfullscreen
+                                  loading="lazy"
+                                  frameborder="0">
+                                </iframe>
+                              </div>`;
+                          } else {
+                            // 패턴 2-4: <a> 태그 교체
+                            return `
+                              <p><a href="${url}" target="_blank" rel="noopener noreferrer" style="color: ${colorMode === 'dark' ? '#A78BFA' : '#7A5AF8'}; text-decoration: underline;">${text}</a></p>
+                              <div class="youtube-embed-container" style="position: relative; padding-bottom: 56.25%; height: 0; margin: 16px 0; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0, 0, 0, ${colorMode === 'dark' ? '0.3' : '0.1'});">
+                                <iframe 
+                                  src="https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1&showinfo=0" 
+                                  style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none;"
+                                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                  allowfullscreen
+                                  loading="lazy"
+                                  frameborder="0">
+                                </iframe>
+                              </div>
+                            `;
+                          }
+                        } else {
+                          console.log(`❌ 패턴 ${index + 1} 매칭됐지만 비디오 ID 추출 실패:`, { url, videoId });
+                          return match; // 원본 반환
+                        }
+                      });
+                    });
+                    
+                    if (!matchFound) {
+                      console.log('❌ 모든 유튜브 패턴 매칭 실패. 콘텐츠 샘플:', processedContent.substring(0, 500));
+                    }
+                  }
+                  
+                  // 일반 링크를 링크 카드로 변환
+                  processedContent = processedContent.replace(
+                    /<a[^>]*href=["'](https?:\/\/(?!.*youtube\.com)(?!.*youtu\.be)[^"']+)["'][^>]*>([^<]+)<\/a>/g,
+                    (match, url, text) => {
+                      // 유튜브 링크는 제외
+                      if (url.includes('youtube.com') || url.includes('youtu.be')) {
+                        return match;
+                      }
+                      
+                      console.log('🔗 스토리 일반 링크 카드 처리:', { url, text });
+                      return `
+                        <div class="link-embed-container" onclick="window.open('${url}', '_blank', 'noopener,noreferrer');" style="
+                          border: 2px solid ${colorMode === 'dark' ? '#4d4d59' : '#e4e4e5'};
+                          border-radius: 8px;
+                          padding: 16px;
+                          margin: 16px 0;
+                          background-color: ${colorMode === 'dark' ? '#3c3c47' : '#f8f9fa'};
+                          transition: all 0.2s ease;
+                          cursor: pointer;
+                        ">
+                          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+                            <div style="
+                              width: 32px;
+                              height: 32px;
+                              background: linear-gradient(135deg, #7A5AF8, #A78BFA);
+                              border-radius: 8px;
+                              display: flex;
+                              align-items: center;
+                              justify-content: center;
+                              color: white;
+                              font-weight: 600;
+                              font-size: 14px;
+                            ">
+                              🔗
+                            </div>
+                            <div style="flex: 1; min-width: 0;">
+                              <div style="
+                                font-weight: 600;
+                                color: ${colorMode === 'dark' ? '#e4e4e5' : '#2c2c35'};
+                                font-size: 16px;
+                                line-height: 1.3;
+                                margin-bottom: 4px;
+                                word-break: break-word;
+                              ">
+                                ${text}
+                              </div>
+                              <div style="
+                                color: ${colorMode === 'dark' ? '#9e9ea4' : '#626269'};
+                                font-size: 14px;
+                                word-break: break-all;
+                              ">
+                                ${url}
+                              </div>
+                            </div>
+                          </div>
+                          <div style="
+                            color: ${colorMode === 'dark' ? '#7e7e87' : '#9e9ea4'};
+                            font-size: 12px;
+                            text-align: right;
+                          ">
+                            클릭하여 링크 열기 →
+                          </div>
+                        </div>
+                      `;
+                    }
+                  );
+                  
+                  console.log('✅ 스토리 임베드 처리 완료:', { 
+                    originalLength: content.length,
+                    processedLength: processedContent.length,
+                    hasYoutubeEmbed: processedContent.includes('youtube-embed-container'),
+                    hasLinkCard: processedContent.includes('link-embed-container')
+                  });
+                  
+                  return processedContent;
                 } else {
+                  console.log('📝 마크다운/텍스트 콘텐츠로 인식됨');
                   // 마크다운 콘텐츠면 변환 - 형광펜 최적화
                   // 형광펜 배경색이 밝기 때문에 어두운 텍스트가 더 잘 보임
                   return content
