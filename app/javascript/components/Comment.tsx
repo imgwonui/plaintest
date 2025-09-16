@@ -40,6 +40,9 @@ interface CommentData {
   authorVerified?: boolean;
   parentId?: number;
   authorId?: string;
+  authorAvatarUrl?: string;  // DB에서 가져온 작성자 프로필 사진 URL
+  author_avatar_url?: string; // DB 응답 형식과 호환
+  authorLevel?: number;       // DB에서 가져온 작성자 레벨
   replies?: CommentData[];
 }
 
@@ -74,48 +77,9 @@ const Comment: React.FC<CommentProps> = ({
   const [replyContent, setReplyContent] = useState('');
   const [replyGuestName, setReplyGuestName] = useState('');
   const [replyGuestPassword, setReplyGuestPassword] = useState('');
-  
-  // 실시간 레벨 상태 관리
-  const [authorLevel, setAuthorLevel] = useState(1);
-  const [isLoadingLevel, setIsLoadingLevel] = useState(false);
 
-  // 댓글 작성자의 레벨 정보 로드
-  useEffect(() => {
-    const loadAuthorLevel = async () => {
-      console.log(`🔍 댓글 레벨 로드 체크 (ID: ${comment.id}):`, {
-        author: comment.author,
-        authorId: comment.authorId,
-        isGuest: comment.isGuest,
-        hasAuthorId: !!comment.authorId,
-        parentId: comment.parentId,
-        commentType: comment.parentId ? '대댓글' : '댓글'
-      });
-
-      if (!comment.isGuest && comment.authorId) {
-        try {
-          setIsLoadingLevel(true);
-          console.log(`📊 ${comment.parentId ? '대댓글' : '댓글'} 작성자 레벨 로드 시작: ${comment.author} (${comment.authorId})`);
-          const levelData = await getDatabaseUserLevel(comment.authorId);
-          console.log(`✅ ${comment.parentId ? '대댓글' : '댓글'} 작성자 레벨 로드 완료: ${comment.author} LV${levelData.level}`);
-          setAuthorLevel(levelData.level);
-        } catch (error) {
-          console.error(`❌ ${comment.parentId ? '대댓글' : '댓글'} 작성자 레벨 로드 실패:`, comment.author, error);
-          setAuthorLevel(1); // 기본값
-        } finally {
-          setIsLoadingLevel(false);
-        }
-      } else {
-        console.log(`⏭️ 게스트 ${comment.parentId ? '대댓글' : '댓글'}이거나 authorId 누락: ${comment.author}`, {
-          isGuest: comment.isGuest,
-          authorId: comment.authorId
-        });
-        setIsLoadingLevel(false);
-        setAuthorLevel(1);
-      }
-    };
-
-    loadAuthorLevel();
-  }, [comment.authorId, comment.isGuest, comment.author, comment.id, comment.parentId]);
+  // 실시간 레벨 상태 관리 - DB에서 가져온 레벨을 기본값으로 사용
+  const [authorLevel, setAuthorLevel] = useState(comment.authorLevel || 1);
 
   // 레벨업 이벤트 리스너
   useEffect(() => {
@@ -251,16 +215,19 @@ const Comment: React.FC<CommentProps> = ({
   return (
     <>
       <HStack align="flex-start" spacing={3} w="full" pl={depth > 0 ? 8 : 0}>
-        <Avatar 
-          size="sm" 
-          name={comment.author} 
-          // 게스트가 아닌 모든 사용자에게 기본 아바타 표시 (이름 기반 색상 아바타)
-          // src는 현재 로그인한 사용자가 자신의 댓글을 볼 때만 실제 아바타 이미지 표시
+        <Avatar
+          size="sm"
+          name={comment.author}
+          // DB에서 가져온 작성자의 프로필 사진을 우선 표시
+          // 없으면 이름 기반 색상 아바타 표시
           src={
             comment.isGuest ? undefined : (
-              user && user.name === comment.author ? user?.avatar : undefined
+              // DB에서 가져온 avatar_url 우선 사용
+              comment.authorAvatarUrl || comment.author_avatar_url ||
+              // 현재 로그인한 사용자의 경우 세션의 avatar도 체크
+              (user && user.id === comment.authorId ? user?.avatar : undefined)
             )
-          } 
+          }
         />
         <VStack align="stretch" flex={1} spacing={2}>
           <HStack justify="space-between">
@@ -282,16 +249,12 @@ const Comment: React.FC<CommentProps> = ({
                   
                   {/* 관리자 뱃지가 표시되지 않는 모든 경우에 레벨 표시 */}
                   {!(currentUser?.isAdmin && comment.authorId === currentUser.id) && (
-                    isLoadingLevel ? (
-                      <Badge colorScheme="gray" size="sm" variant="subtle">로딩중...</Badge>
-                    ) : (
-                      <LevelBadge 
-                        level={authorLevel} 
-                        size="xs" 
-                        variant="subtle"
-                        showIcon={true}
-                      />
-                    )
+                    <LevelBadge
+                      level={authorLevel}
+                      size="xs"
+                      variant="subtle"
+                      showIcon={true}
+                    />
                   )}
                 </>
               )}

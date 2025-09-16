@@ -43,19 +43,27 @@ const OptimizedImage: React.FC<OptimizedImageProps> = ({
   const imgRef = useRef<HTMLImageElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Intersection Observer for lazy loading
+  // Intersection Observer for lazy loading with adaptive margins
   useEffect(() => {
     if (priority || isInView) return;
+
+    // Priority에 따른 적응적 rootMargin 설정
+    const rootMargin = priority ? '200px' : '100px';
 
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
           setIsInView(true);
           observer.disconnect();
+
+          // 우선순위 이미지라면 즉시 로딩 로그
+          if (priority) {
+            console.log('🚀 우선순위 이미지 로딩 시작:', src.substring(0, 50) + '...');
+          }
         }
       },
       {
-        rootMargin: '50px', // 뷰포트에서 50px 전에 로딩 시작
+        rootMargin, // 우선순위에 따라 다른 마진 적용
         threshold: 0.1,
       }
     );

@@ -65,10 +65,45 @@ const Profile: React.FC = () => {
     }
   }, [isLoggedIn, navigate]);
 
+  // 레벨업 이벤트 리스너 추가
+  useEffect(() => {
+    if (!user) return;
+
+    const handleLevelUp = (event: CustomEvent) => {
+      if (event.detail.userId === user.id) {
+        console.log(`🎉 프로필 페이지에서 레벨업 감지: LV${event.detail.oldLevel} → LV${event.detail.newLevel}`);
+        // 레벨 정보 새로고침
+        getDatabaseUserLevel(user.id).then(newLevel => {
+          setUserLevel(newLevel);
+          console.log('✅ 프로필 레벨 업데이트 완료:', newLevel);
+        });
+      }
+    };
+
+    const handleCacheInvalidated = (event: CustomEvent) => {
+      if (event.detail.userId === user.id) {
+        console.log('🔄 프로필 캐시 무효화됨, 레벨 새로고침');
+        getDatabaseUserLevel(user.id).then(newLevel => {
+          setUserLevel(newLevel);
+        });
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('userLevelUp', handleLevelUp as EventListener);
+      window.addEventListener('userCacheInvalidated', handleCacheInvalidated as EventListener);
+
+      return () => {
+        window.removeEventListener('userLevelUp', handleLevelUp as EventListener);
+        window.removeEventListener('userCacheInvalidated', handleCacheInvalidated as EventListener);
+      };
+    }
+  }, [user]);
+
   // 사용자 데이터 로드
   useEffect(() => {
     if (!user) return;
-    
+
     const loadUserData = async () => {
       try {
         setIsLoading(true);
@@ -230,13 +265,32 @@ const Profile: React.FC = () => {
         
         try {
           // 실제 활동 통계
+          // 사용자가 받은 총 북마크 수 계산
+          let totalBookmarksReceived = 0;
+          for (const story of myStories) {
+            try {
+              const bookmarkCount = await interactionService.getBookmarkCount(story.id, 'story');
+              totalBookmarksReceived += bookmarkCount;
+            } catch (error) {
+              console.warn(`Story ${story.id} 북마크 수 조회 실패:`, error);
+            }
+          }
+          for (const post of updatedLoungePosts) {
+            try {
+              const bookmarkCount = await interactionService.getBookmarkCount(post.id, 'lounge');
+              totalBookmarksReceived += bookmarkCount;
+            } catch (error) {
+              console.warn(`Lounge ${post.id} 북마크 수 조회 실패:`, error);
+            }
+          }
+
           const activityStats = {
             totalLikes: totalLikes,
             totalPosts: myStories.length + myLoungePosts.length,
             totalComments: 0, // 추후 필요시 구현
             storyPromotions: myStories.length, // Story로 승격된 글
             excellentPosts: updatedLoungePosts.filter(p => p.like_count >= 50).length,
-            totalBookmarks: userBookmarks.length
+            totalBookmarks: totalBookmarksReceived  // 받은 북마크 수로 변경
           };
           
           console.log('📊 사용자 활동 통계:', activityStats);

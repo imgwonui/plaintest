@@ -3,41 +3,43 @@ import { userService } from '../services/supabaseDataService';
 import { supabase } from '../lib/supabaseClient';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
-// UUID 생성 함수 (임시 - Supabase Auth 연동 전까지 사용)
-const generateUUID = (): string => {
-  try {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-      const r = Math.random() * 16 | 0;
-      const v = c === 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    });
-  } catch (error) {
-    console.warn('UUID 생성 실패, 단순 ID 사용:', error);
-    return 'user-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-  }
-};
+// OAuth Provider별 고유 ID 생성 함수
+// 실제 OAuth 연동 전까지 사용하는 임시 함수
+// 각 provider별로 고정된 테스트 계정 ID를 반환
+const getProviderUserId = (provider: 'kakao' | 'google' | 'admin', mockUserName?: string): string => {
+  // 테스트용 고정 ID 매핑 (실제 OAuth 연동 시 provider에서 받은 고유 ID 사용)
+  const providerIdMap: Record<string, string> = {
+    // 카카오 테스트 계정들 - 고정 ID
+    'kakao_김흑흑': '550e8400-e29b-41d4-a716-446655440010',  // 카카오 김흑흑 고정 ID
+    'kakao_김인사': '550e8400-e29b-41d4-a716-446655440001',  // 카카오 김인사 고정 ID (DB와 매칭)
+    'kakao_default': '550e8400-e29b-41d4-a716-446655440011', // 기본 카카오 계정
 
-// 사용자 ID 일관성 확보 - 같은 provider로 로그인시 항상 동일한 ID 사용
-const getOrCreateUserId = (provider: 'kakao' | 'google' | 'admin'): string => {
-  const storageKey = `plain_user_id_${provider}`;
-  
-  try {
-    const existingId = localStorage.getItem(storageKey);
-    
-    if (existingId && existingId.length > 0) {
-      console.log(`📋 기존 사용자 ID 발견 (${provider}):`, existingId);
-      return existingId;
-    }
-    
-    // 새로운 ID 생성 및 저장
-    const newId = generateUUID();
-    localStorage.setItem(storageKey, newId);
-    console.log(`🆕 새 사용자 ID 생성 (${provider}):`, newId);
-    return newId;
-  } catch (storageError) {
-    console.warn('⚠️ localStorage 접근 실패, 임시 ID 사용:', storageError);
-    return generateUUID();
+    // 구글 테스트 계정들 - 고정 ID
+    'google_이담당': '550e8400-e29b-41d4-a716-446655440002',  // 구글 이담당 고정 ID (DB와 매칭)
+    'google_김구글': '550e8400-e29b-41d4-a716-446655440012',  // 구글 김구글 고정 ID
+    'google_default': '550e8400-e29b-41d4-a716-446655440013', // 기본 구글 계정
+
+    // 관리자 계정 - 고정 ID
+    'admin': '00000000-0000-4000-8000-000000000001'
+  };
+
+  if (provider === 'admin') {
+    return providerIdMap['admin'];
   }
+
+  // mockUserName이 제공되면 해당 사용자의 고정 ID 반환
+  if (mockUserName) {
+    const key = `${provider}_${mockUserName}`;
+    if (providerIdMap[key]) {
+      console.log(`📋 고정 사용자 ID 사용 (${provider}, ${mockUserName}):`, providerIdMap[key]);
+      return providerIdMap[key];
+    }
+  }
+
+  // 기본값 반환
+  const defaultKey = `${provider}_default`;
+  console.log(`📋 기본 사용자 ID 사용 (${provider}):`, providerIdMap[defaultKey]);
+  return providerIdMap[defaultKey];
 };
 
 interface User {
@@ -207,11 +209,30 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const login = async (provider: 'kakao' | 'google') => {
     try {
-      // 일관된 사용자 ID 사용 - 같은 provider로 로그인시 항상 동일한 ID
-      const userId = getOrCreateUserId(provider);
-      
-      console.log('🔍 로그인 시도:', { provider, userId });
-      
+      // 기존 localStorage ID 정리 (마이그레이션)
+      if (typeof window !== 'undefined') {
+        const oldKeys = ['plain_user_id_kakao', 'plain_user_id_google', 'plain_user_id_admin'];
+        oldKeys.forEach(key => {
+          try {
+            localStorage.removeItem(key);
+          } catch (e) {
+            console.warn('localStorage 정리 실패:', e);
+          }
+        });
+      }
+
+      // OAuth 모의 로그인 - 실제 OAuth 연동 전까지 테스트용
+      // 카카오: 김흑흑, 구글: 이담당 으로 고정 (다른 컴퓨터에서도 동일)
+      const mockUserData = {
+        kakao: { name: '김흑흑', email: 'heukheuk@kakao.com' },
+        google: { name: '이담당', email: 'test2@plain.com' }
+      };
+
+      const userData = mockUserData[provider];
+      const userId = getProviderUserId(provider, userData.name);
+
+      console.log('🔍 로그인 시도:', { provider, userId, userName: userData.name });
+
       // ❗ 중요: 오직 DB에서만 사용자 데이터 가져오기 - 하드코딩 금지
       try {
         console.log(`🔍 DB에서 사용자 검색 중... ID: ${userId}`);
@@ -241,21 +262,29 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           
           return; // DB 데이터 복원 완료
         } else {
-          // DB에 사용자가 없음 - 김흑흑 사용자가 없는 이유 확인
-          console.error('❌ DB에 사용자 데이터가 없습니다!');
-          console.error('🔍 찾은 사용자 ID:', userId);
-          console.error('🔍 예상 사용자: 김흑흑');
-          console.error('💡 혹시 사용자 ID가 잘못되었나요? localStorage 확인이 필요합니다.');
-          
-          // localStorage에 저장된 ID 확인
+          // DB에 사용자가 없으면 새로 생성
+          console.log('🆕 DB에 사용자가 없어 새로 생성합니다.');
+
+          const newUser = await userService.createUser({
+            id: userId,
+            name: userData.name,
+            email: userData.email,
+            provider: provider,
+            is_admin: false,
+            is_verified: provider === 'google',
+            avatar_url: null,  // 추후 OAuth 연동 시 프로필 이미지 URL 설정
+            bio: null
+          });
+
+          console.log('✅ 새 사용자 생성 완료:', newUser.name);
+          setUser(newUser);
+
           try {
-            const storedKakaoId = localStorage.getItem('plain_user_id_kakao');
-            console.log('📦 localStorage에 저장된 카카오 ID:', storedKakaoId);
-          } catch (e) {
-            console.error('localStorage 접근 실패:', e);
+            localStorage.setItem('plain_user', JSON.stringify(newUser));
+            console.log('💾 새 사용자 정보 로컬 저장 완료');
+          } catch (storageError) {
+            console.warn('⚠️ 로컬 스토리지 저장 실패:', storageError);
           }
-          
-          throw new Error(`김흑흑 사용자를 찾을 수 없습니다. 사용자 ID: ${userId}`);
         }
       } catch (dbError) {
         console.error('❌ 데이터베이스 연결 실패:', dbError);
@@ -291,9 +320,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setUser(adminUser);
       console.log('👑 관리자로 로그인되었습니다');
       
-      // 기존 localStorage의 랜덤 admin ID 제거 후 고정 ID 저장
+      // 관리자 정보 로컬 저장
       try {
-        localStorage.removeItem('plain_user_id_admin'); // 기존 랜덤 ID 제거
         localStorage.setItem('plain_user', JSON.stringify(adminUser));
         console.log('💾 관리자 세션이 로컬 스토리지에 저장됨');
       } catch (storageError) {

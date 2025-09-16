@@ -45,10 +45,12 @@ import { useAuth } from '../contexts/AuthContext';
 type LoungePost = any;
 import { loungeService, userService } from '../services/supabaseDataService';
 import { optimizedLoungeService } from '../services/optimizedDataService';
+import { enhancedDataService } from '../services/enhancedDataService';
 import { getAllTags, getTagById } from '../data/tags';
 import TagSelector from '../components/TagSelector';
 import LevelBadge from '../components/UserLevel/LevelBadge';
 import { getDatabaseUserLevel, databaseUserLevelService } from '../services/databaseUserLevelService';
+import { getAuthorLevelFast } from '../services/enhancedDataService';
 import dayjs from 'dayjs';
 
 type SortOption = 'latest' | 'popular';
@@ -61,13 +63,19 @@ const AuthorLevelBadge: React.FC<{ authorId: string }> = ({ authorId }) => {
   const [authorLevel, setAuthorLevel] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
 
-  // 초기 레벨 로드
+  // 초기 레벨 로드 - 향상된 배치 로딩 사용
   useEffect(() => {
     const loadLevel = async () => {
+      if (!authorId) {
+        setAuthorLevel(1);
+        return;
+      }
+
       try {
         setIsLoading(true);
-        const levelData = await getDatabaseUserLevel(authorId);
-        setAuthorLevel(levelData.level);
+        // 배치 처리를 통한 빠른 로딩
+        const level = await getAuthorLevelFast(authorId);
+        setAuthorLevel(level);
       } catch (error) {
         console.warn('작성자 레벨 로드 실패:', error);
         setAuthorLevel(1);
@@ -76,9 +84,7 @@ const AuthorLevelBadge: React.FC<{ authorId: string }> = ({ authorId }) => {
       }
     };
 
-    if (authorId) {
-      loadLevel();
-    }
+    loadLevel();
   }, [authorId]);
 
   // 레벨업 이벤트 리스너
@@ -94,9 +100,9 @@ const AuthorLevelBadge: React.FC<{ authorId: string }> = ({ authorId }) => {
     const handleCacheInvalidated = (event: CustomEvent) => {
       if (event.detail.userId === authorId) {
         console.log(`🔄 작성자 캐시 무효화됨, 레벨 새로고침: ${authorId}`);
-        // 새로운 레벨 데이터 로드
-        getDatabaseUserLevel(authorId).then(levelData => {
-          setAuthorLevel(levelData.level);
+        // 향상된 서비스를 통해 빠르게 새로고침
+        getAuthorLevelFast(authorId).then(level => {
+          setAuthorLevel(level);
         }).catch(error => {
           console.warn('캐시 무효화 후 레벨 로드 실패:', error);
         });
@@ -145,21 +151,38 @@ const LoungeList: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'all' | 'popular'>('all');
   const [loungePosts, setLoungePosts] = useState<LoungePost[]>([]);
 
-  // 데이터 로드 함수
+  // 데이터 로드 함수 - 향상된 성능 최적화
   const loadPosts = async () => {
     try {
       setIsLoading(true);
-      
+
       let posts;
       if (activeTab === 'popular') {
+        // 인기 글은 기존 서비스 사용
         const response = await loungeService.getPopular(1, 100);
         posts = response.posts || [];
       } else {
-        const response = await optimizedLoungeService.getAll(1, 50, typeFilter === 'all' ? undefined : typeFilter, true, true); // forceRefresh = true
-        posts = response.posts || [];
+        // 일반 목록은 향상된 서비스 사용
+        try {
+          console.log('🏛️ 향상된 라운지 로딩 시작...');
+          const response = await enhancedDataService.getLoungePostsOptimized(
+            1,
+            50,
+            typeFilter === 'all' ? undefined : typeFilter
+          );
+          posts = response.posts;
+          console.log('✅ 향상된 라운지 로드 성공:', {
+            글수: posts.length,
+            성능최적화: '배치 author level 로딩'
+          });
+        } catch (enhancedError) {
+          console.warn('⚠️ 향상된 서비스 실패, fallback 시도:', enhancedError);
+          // Fallback to original service
+          const response = await optimizedLoungeService.getAll(1, 50, typeFilter === 'all' ? undefined : typeFilter, true, true);
+          posts = response.posts || [];
+        }
       }
-      
-      console.log('✅ 라운지 포스트 로드 성공:', posts.length, '개');
+
       setLoungePosts(posts);
       
       // 좋아요 50개 이상인 글 체크 (사용자의 글만)

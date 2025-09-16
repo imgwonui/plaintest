@@ -25,6 +25,7 @@ import { CardSkeletonGrid } from '../components/LoadingSpinner';
 import SEOHead from '../components/SEOHead';
 import { storyService, userService } from '../services/supabaseDataService';
 import { optimizedStoryService } from '../services/optimizedDataService';
+import { enhancedDataService } from '../services/enhancedDataService';
 import { useAuth } from '../contexts/AuthContext';
 import { getAllTags, getTagById } from '../data/tags';
 import TagSelector from '../components/TagSelector';
@@ -42,25 +43,40 @@ const StoryList: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [stories, setStories] = useState<any[]>([]);
 
-  // 데이터 로드 함수
+  // 데이터 로드 함수 - 향상된 성능 최적화
   const loadStories = async () => {
     try {
-      console.log('📖 스토리 목록 로드 시작...');
+      console.log('📖 향상된 스토리 목록 로드 시작...');
       setIsLoading(true);
-      const response = await optimizedStoryService.getAll(1, 50); // 최적화된 서비스로 변경
-      console.log('📖 스토리 서비스 응답:', response);
-      setStories(response.stories || []);
-      console.log('✅ 스토리 데이터 로드 성공:', response.stories?.length || 0, '개');
-      console.log('📖 로드된 스토리들:', response.stories);
-    } catch (error) {
-      console.error('❌ 스토리 데이터 로드 실패:', error);
-      toast({
-        title: "데이터 로드 실패",
-        description: "스토리를 불러오는 중 오류가 발생했습니다.",
-        status: "error",
-        duration: 5000,
+
+      // 향상된 데이터 서비스를 통한 빠른 로딩
+      const response = await enhancedDataService.getStoriesOptimized(1, 50);
+
+      console.log('✅ 향상된 스토리 로드 완료:', {
+        스토리수: response.stories.length,
+        성능최적화: '배치 author level 로딩'
       });
-      setStories([]);
+
+      setStories(response.stories);
+    } catch (error) {
+      console.error('❌ 향상된 스토리 로드 실패:', error);
+
+      // Fallback to original service
+      try {
+        console.log('🔄 기본 서비스로 fallback 시도...');
+        const response = await optimizedStoryService.getAll(1, 50);
+        setStories(response.stories || []);
+        console.log('✅ Fallback 스토리 로드 성공');
+      } catch (fallbackError) {
+        console.error('❌ Fallback도 실패:', fallbackError);
+        toast({
+          title: "데이터 로드 실패",
+          description: "스토리를 불러오는 중 오류가 발생했습니다.",
+          status: "error",
+          duration: 5000,
+        });
+        setStories([]);
+      }
     } finally {
       setIsLoading(false);
     }

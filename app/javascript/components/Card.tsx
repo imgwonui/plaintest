@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, memo, useMemo, useCallback } from 'react';
 import {
   Box,
   Card as ChakraCard,
@@ -17,7 +17,7 @@ import dayjs from 'dayjs';
 import { getTagById } from '../data/tags';
 import LevelBadge from './UserLevel/LevelBadge';
 import PromotionBadge from './PromotionBadge';
-import { getDatabaseUserLevel } from '../services/databaseUserLevelService';
+import { getAuthorLevelFast } from '../services/enhancedDataService';
 import OptimizedImage from './OptimizedImage';
 
 // HTML 태그를 제거하는 유틸리티 함수
@@ -48,18 +48,24 @@ const stripHtmlTags = (html: string): string => {
   return stripped;
 };
 
-// 카드 작성자 실시간 레벨 표시 컴포넌트
-const CardAuthorLevel: React.FC<{ authorId: string }> = ({ authorId }) => {
+// 최적화된 카드 작성자 레벨 표시 컴포넌트 - 배치 로딩 사용
+const CardAuthorLevel: React.FC<{ authorId: string }> = memo(({ authorId }) => {
   const [authorLevel, setAuthorLevel] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
 
-  // 초기 레벨 로드
+  // 초기 레벨 로드 - 향상된 데이터 서비스 사용
   useEffect(() => {
     const loadLevel = async () => {
+      if (!authorId) {
+        setAuthorLevel(1);
+        return;
+      }
+
       try {
         setIsLoading(true);
-        const levelData = await getDatabaseUserLevel(authorId);
-        setAuthorLevel(levelData.level);
+        // 배치 처리를 통한 빠른 로딩
+        const level = await getAuthorLevelFast(authorId);
+        setAuthorLevel(level);
       } catch (error) {
         console.warn('카드 작성자 레벨 로드 실패:', error);
         setAuthorLevel(1);
@@ -68,9 +74,7 @@ const CardAuthorLevel: React.FC<{ authorId: string }> = ({ authorId }) => {
       }
     };
 
-    if (authorId) {
-      loadLevel();
-    }
+    loadLevel();
   }, [authorId]);
 
   // 레벨업 이벤트 리스너
@@ -86,8 +90,9 @@ const CardAuthorLevel: React.FC<{ authorId: string }> = ({ authorId }) => {
     const handleCacheInvalidated = (event: CustomEvent) => {
       if (event.detail.userId === authorId) {
         console.log(`🔄 카드 작성자 캐시 무효화됨, 레벨 새로고침: ${authorId}`);
-        getDatabaseUserLevel(authorId).then(levelData => {
-          setAuthorLevel(levelData.level);
+        // 향상된 서비스를 통해 빠르게 새로고침
+        getAuthorLevelFast(authorId).then(level => {
+          setAuthorLevel(level);
         }).catch(error => {
           console.warn('카드 작성자 캐시 무효화 후 레벨 로드 실패:', error);
         });
@@ -109,14 +114,16 @@ const CardAuthorLevel: React.FC<{ authorId: string }> = ({ authorId }) => {
   }
 
   return (
-    <LevelBadge 
-      level={authorLevel} 
-      size="xs" 
+    <LevelBadge
+      level={authorLevel}
+      size="xs"
       variant="subtle"
       showIcon={true}
     />
   );
-};
+});
+
+CardAuthorLevel.displayName = 'CardAuthorLevel';
 
 interface CardProps {
   type: 'story' | 'lounge';
@@ -139,7 +146,32 @@ interface CardProps {
   promotionNote?: string;
 }
 
-const Card: React.FC<CardProps> = ({
+// Badge variant mapping - 메모이제이션을 위해 컴포넌트 외부로 이동
+const BADGE_VARIANT_MAP: Record<string, string> = {
+  'question': 'blue',
+  'experience': 'green',
+  'info': 'purple',
+  'free': 'gray',
+  'news': 'orange',
+  'advice': 'teal',
+  'recommend': 'pink',
+  'anonymous': 'red'
+};
+
+const BADGE_TEXT_MAP: Record<string, string> = {
+  'question': '질문/Q&A',
+  'experience': '경험담/사연 공유',
+  'info': '정보·팁 공유',
+  'free': '자유글/잡담',
+  'news': '뉴스에 한마디',
+  'advice': '같이 고민해요',
+  'recommend': '추천해주세요',
+  'anonymous': '익명 토크'
+};
+
+const TAG_VARIANTS = ['blue', 'green', 'purple', 'orange', 'teal', 'pink'];
+
+const CardComponent: React.FC<CardProps> = ({
   type,
   id,
   title,
@@ -160,40 +192,28 @@ const Card: React.FC<CardProps> = ({
   promotionNote,
 }) => {
   const { colorMode } = useColorMode();
-  const linkTo = type === 'story' ? `/story/${id}` : `/lounge/${id}`;
-  
-  const getBadgeVariant = (loungeType?: string) => {
-    switch (loungeType) {
-      case 'question': return 'blue';
-      case 'experience': return 'green';
-      case 'info': return 'purple';
-      case 'free': return 'gray';
-      case 'news': return 'orange';
-      case 'advice': return 'teal';
-      case 'recommend': return 'pink';
-      case 'anonymous': return 'red';
-      default: return 'gray';
-    }
-  };
 
-  const getBadgeText = (loungeType?: string) => {
-    switch (loungeType) {
-      case 'question': return '질문/Q&A';
-      case 'experience': return '경험담/사연 공유';
-      case 'info': return '정보·팁 공유';
-      case 'free': return '자유글/잡담';
-      case 'news': return '뉴스에 한마디';
-      case 'advice': return '같이 고민해요';
-      case 'recommend': return '추천해주세요';
-      case 'anonymous': return '익명 토크';
-      default: return '';
-    }
-  };
+  // 메모이제이션된 계산값들
+  const linkTo = useMemo(() =>
+    type === 'story' ? `/story/${id}` : `/lounge/${id}`, [type, id]
+  );
 
-  const getTagVariant = (index: number) => {
-    const variants = ['blue', 'green', 'purple', 'orange', 'teal', 'pink'];
-    return variants[index % variants.length];
-  };
+  const badgeVariant = useMemo(() =>
+    BADGE_VARIANT_MAP[loungeType || ''] || 'gray', [loungeType]
+  );
+
+  const badgeText = useMemo(() =>
+    BADGE_TEXT_MAP[loungeType || ''] || '', [loungeType]
+  );
+
+  const getTagVariant = useCallback((index: number) =>
+    TAG_VARIANTS[index % TAG_VARIANTS.length], []
+  );
+
+  // 요약 텍스트 메모이제이션
+  const summaryText = useMemo(() =>
+    summary ? stripHtmlTags(summary) : '', [summary]
+  );
 
   return (
     <ChakraCard 
@@ -213,6 +233,7 @@ const Card: React.FC<CardProps> = ({
             objectFit="cover"
             loading="lazy"
             placeholder="blur"
+            priority={false}
             onError={(e) => {
               console.warn('Card image failed to load:', imageUrl);
             }}
@@ -224,8 +245,8 @@ const Card: React.FC<CardProps> = ({
             <VStack align="stretch" spacing={2}>
               {type === 'lounge' && loungeType && (
                 <HStack>
-                  <Badge colorScheme={getBadgeVariant(loungeType)} size="sm">
-                    {getBadgeText(loungeType)}
+                  <Badge colorScheme={badgeVariant} size="sm">
+                    {badgeText}
                   </Badge>
                   {isExcellent && (
                     <Badge variant="excellent" size="sm">
@@ -267,7 +288,7 @@ const Card: React.FC<CardProps> = ({
                 lineHeight="1.5"
                 noOfLines={3}
               >
-                {stripHtmlTags(summary)}
+                {summaryText}
               </Text>
             )}
           </VStack>
@@ -343,5 +364,37 @@ const Card: React.FC<CardProps> = ({
     </ChakraCard>
   );
 };
+
+CardComponent.displayName = 'CardComponent';
+
+// 메모이제이션 비교 함수 - 성능 최적화
+const arePropsEqual = (prevProps: CardProps, nextProps: CardProps) => {
+  // 기본적인 props 비교
+  if (
+    prevProps.id !== nextProps.id ||
+    prevProps.title !== nextProps.title ||
+    prevProps.imageUrl !== nextProps.imageUrl ||
+    prevProps.likeCount !== nextProps.likeCount ||
+    prevProps.commentCount !== nextProps.commentCount ||
+    prevProps.scrapCount !== nextProps.scrapCount
+  ) {
+    return false;
+  }
+
+  // tags 배열 비교 (얕은 비교)
+  if (prevProps.tags.length !== nextProps.tags.length) {
+    return false;
+  }
+
+  for (let i = 0; i < prevProps.tags.length; i++) {
+    if (prevProps.tags[i] !== nextProps.tags[i]) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+const Card = memo(CardComponent, arePropsEqual);
 
 export default Card;

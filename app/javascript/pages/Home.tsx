@@ -25,8 +25,10 @@ import { OrganizationJsonLd, WebSiteJsonLd } from '../components/JsonLd';
 import { WebAnalytics } from '../components/Analytics';
 import { storyService, loungeService, userService, testConnection } from '../services/supabaseDataService';
 import { optimizedStoryService, optimizedLoungeService } from '../services/optimizedDataService';
+import { enhancedDataService } from '../services/enhancedDataService';
 import LevelBadge from '../components/UserLevel/LevelBadge';
 import { getDatabaseUserLevel } from '../services/databaseUserLevelService';
+import { getAuthorLevelFast } from '../services/enhancedDataService';
 import OptimizedImage from '../components/OptimizedImage';
 import { preloadHomeImages } from '../utils/imagePreloader';
 import { cacheService } from '../services/cacheService';
@@ -38,13 +40,19 @@ const HomePostAuthorLevel: React.FC<{ authorId: string }> = ({ authorId }) => {
   const [authorLevel, setAuthorLevel] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
 
-  // 초기 레벨 로드
+  // 초기 레벨 로드 - 향상된 배치 로딩 사용
   useEffect(() => {
     const loadLevel = async () => {
+      if (!authorId) {
+        setAuthorLevel(1);
+        return;
+      }
+
       try {
         setIsLoading(true);
-        const levelData = await getDatabaseUserLevel(authorId);
-        setAuthorLevel(levelData.level);
+        // 배치 처리를 통한 빠른 로딩
+        const level = await getAuthorLevelFast(authorId);
+        setAuthorLevel(level);
       } catch (error) {
         console.warn('홈 포스트 작성자 레벨 로드 실패:', error);
         setAuthorLevel(1);
@@ -53,9 +61,7 @@ const HomePostAuthorLevel: React.FC<{ authorId: string }> = ({ authorId }) => {
       }
     };
 
-    if (authorId) {
-      loadLevel();
-    }
+    loadLevel();
   }, [authorId]);
 
   // 레벨업 이벤트 리스너
@@ -71,8 +77,9 @@ const HomePostAuthorLevel: React.FC<{ authorId: string }> = ({ authorId }) => {
     const handleCacheInvalidated = (event: CustomEvent) => {
       if (event.detail.userId === authorId) {
         console.log(`🔄 홈 포스트 작성자 캐시 무효화됨, 레벨 새로고침: ${authorId}`);
-        getDatabaseUserLevel(authorId).then(levelData => {
-          setAuthorLevel(levelData.level);
+        // 향상된 서비스를 통해 빠르게 새로고침
+        getAuthorLevelFast(authorId).then(level => {
+          setAuthorLevel(level);
         }).catch(error => {
           console.warn('홈 포스트 작성자 캐시 무효화 후 레벨 로드 실패:', error);
         });
@@ -122,66 +129,51 @@ const Home: React.FC = () => {
     endRetry
   } = useConnectionStatus();
   
-  // Supabase 데이터 로드
+  // Supabase 데이터 로드 - 향상된 성능 최적화
   const loadData = async () => {
     try {
       setIsLoading(true);
-      
+
       // 재시도 중이라면 상태 업데이트
       if (connectionStatus.retryCount > 0) {
         startRetry();
       }
-        
-        // 캐시를 강제로 새로고침하여 삭제된 데이터 문제 방지
-        const [storiesData, loungeData] = await Promise.all([
-          optimizedStoryService.getAll(1, 10, true, true), // forceRefresh = true로 캐시 새로고침
-          optimizedLoungeService.getAll(1, 20, undefined, true, true)  // forceRefresh = true
-        ]);
-        
-        // 유효한 스토리만 필터링 (id, title, summary가 있는 것)
-        const validStories = (storiesData.stories || []).filter(story => 
-          story && story.id && story.title && story.title.trim() !== ''
-        );
-        
-        // 유효한 라운지 포스트만 필터링
-        const validLoungePosts = (loungeData.posts || []).filter(post => 
-          post && post.id && post.title && post.title.trim() !== ''
-        );
-        
-        setStories(validStories);
-        setLoungePosts(validLoungePosts);
-        setDisplayedLoungePosts(validLoungePosts.slice(0, 15));
-        
-        // 이미지 프리로딩 시작 (유효한 데이터만)
+
+      console.log('🚀 향상된 홈 데이터 로딩 시작...');
+
+      // 향상된 데이터 서비스를 통한 최적화된 로딩
+      // Phase 1: 텍스트 먼저 로드, 이미지는 나중에
+      const homeData = await enhancedDataService.getHomeDataOptimized();
+
+      // 유효한 데이터만 필터링
+      const validStories = homeData.stories.filter(story =>
+        story && story.id && story.title && story.title.trim() !== ''
+      );
+
+      const validLoungePosts = homeData.loungePosts.filter(post =>
+        post && post.id && post.title && post.title.trim() !== ''
+      );
+
+      setStories(validStories);
+      setLoungePosts(validLoungePosts);
+      setDisplayedLoungePosts(validLoungePosts.slice(0, 15));
+
+      // Phase 2: 백그라운드에서 이미지 프리로딩
+      setTimeout(() => {
         preloadHomeImages.preloadStoriesAndLounge(
-          validStories, 
+          validStories,
           validLoungePosts
-        ).catch(err => console.warn('Image preloading failed:', err));
-        
-        // 성공 상태 보고
-        reportSuccess();
-        
-        console.log('✅ Home 데이터 로드 성공:', {
-          전체스토리수: storiesData.stories?.length || 0,
-          유효한스토리수: validStories.length,
-          전체라운지글수: loungeData.posts?.length || 0,
-          유효한라운지글수: validLoungePosts.length
-        });
-        
-        // 삭제된 데이터가 감지되었다면 경고 로그
-        const deletedStoriesCount = (storiesData.stories?.length || 0) - validStories.length;
-        const deletedPostsCount = (loungeData.posts?.length || 0) - validLoungePosts.length;
-        
-        if (deletedStoriesCount > 0 || deletedPostsCount > 0) {
-          console.warn('🗑️ 삭제되거나 유효하지 않은 데이터 감지:', {
-            삭제된스토리수: deletedStoriesCount,
-            삭제된포스트수: deletedPostsCount
-          });
-          
-          // 삭제된 데이터가 감지되면 캐시 정리
-          cacheService.cleanupDeletedData();
-        }
-        
+        ).catch(err => console.warn('이미지 프리로딩 실패:', err));
+      }, 200);
+
+      // 성공 상태 보고
+      reportSuccess();
+
+      console.log('✅ 향상된 홈 데이터 로드 성공:', {
+        스토리수: validStories.length,
+        라운지글수: validLoungePosts.length,
+        성능최적화: 'Phase 1 텍스트 로딩 완료'
+      });
       } catch (error) {
         console.error('❌ Home 데이터 로드 실패:', error);
         

@@ -118,10 +118,12 @@ const StoryDetail: React.FC = () => {
           content: comment.content,
           createdAt: comment.created_at,
           isGuest: comment.is_guest,
+          authorId: comment.author_id,
+          authorAvatarUrl: comment.author_avatar_url || comment.author_profile?.avatar_url,
+          authorLevel: comment.authorLevel || comment.author_level?.level || 1,
           guestPassword: comment.guest_password,
           authorVerified: comment.author_verified,
           parentId: comment.parent_id,
-          authorId: comment.author_id,
           replies: comment.replies ? comment.replies.map(reply => ({
             id: reply.id,
             author: reply.author_name,
@@ -132,6 +134,8 @@ const StoryDetail: React.FC = () => {
             authorVerified: reply.author_verified,
             parentId: reply.parent_id,
             authorId: reply.author_id,
+            authorAvatarUrl: reply.author_avatar_url || reply.author_profile?.avatar_url,
+            authorLevel: reply.authorLevel || reply.author_level?.level || 1
           })) : []
         }));
         setStoryComments(transformedComments);
@@ -585,8 +589,8 @@ const StoryDetail: React.FC = () => {
     setIsSubmittingComment(true);
     
     try {
-      // 댓글 데이터 생성
-      const newComment = await commentService.create({
+      // 댓글 데이터 생성 (optimizedCommentService 사용으로 캐시 자동 무효화)
+      const newComment = await optimizedCommentService.create({
         post_id: storyId,
         post_type: 'story' as const,
         author_id: user?.id || null,
@@ -596,9 +600,9 @@ const StoryDetail: React.FC = () => {
         guest_password: password, // Supabase에서 해시화 처리
         author_verified: user?.isVerified || false
       });
-      
-      // 댓글 목록 새로 로드
-      const updatedComments = await optimizedCommentService.getByPost(storyId, 'story');
+
+      // 댓글 목록 새로 로드 (forceRefresh로 캐시 무시하고 최신 데이터 가져오기)
+      const updatedComments = await optimizedCommentService.getByPost(storyId, 'story', true);
       // Supabase 댓글 데이터를 Comment 컴포넌트 형식으로 변환
       const transformedComments = (updatedComments || []).map(comment => ({
         id: comment.id,
@@ -606,10 +610,12 @@ const StoryDetail: React.FC = () => {
         content: comment.content,
         createdAt: comment.created_at,
         isGuest: comment.is_guest,
+        authorId: comment.author_id,
+        authorAvatarUrl: comment.author_avatar_url || comment.author_profile?.avatar_url,
+        authorLevel: comment.authorLevel || comment.author_level?.level || 1,
         guestPassword: comment.guest_password,
         authorVerified: comment.author_verified,
         parentId: comment.parent_id,
-        authorId: comment.author_id,
         replies: comment.replies ? comment.replies.map(reply => ({
           id: reply.id,
           author: reply.author_name,
@@ -620,6 +626,8 @@ const StoryDetail: React.FC = () => {
           authorVerified: reply.author_verified,
           parentId: reply.parent_id,
           authorId: reply.author_id,
+          authorAvatarUrl: reply.author_avatar_url || reply.author_profile?.avatar_url,
+          authorLevel: reply.authorLevel || reply.author_level?.level || 1
         })) : []
       }));
       setStoryComments(transformedComments);
@@ -646,8 +654,8 @@ const StoryDetail: React.FC = () => {
     setIsSubmittingComment(true);
     
     try {
-      // 대댓글 생성 - Supabase에 저장
-      const newReply = await commentService.create({
+      // 대댓글 생성 - optimizedCommentService 사용으로 캐시 자동 무효화
+      const newReply = await optimizedCommentService.create({
         post_id: storyId,
         post_type: 'story' as const,
         author_id: user?.id || null,
@@ -658,9 +666,9 @@ const StoryDetail: React.FC = () => {
         author_verified: user?.isVerified || false,
         parent_id: parentId // 부모 댓글 ID
       });
-      
-      // 댓글 목록 새로고침
-      const updatedComments = await optimizedCommentService.getByPost(storyId, 'story');
+
+      // 댓글 목록 새로고침 (forceRefresh로 최신 데이터 보장)
+      const updatedComments = await optimizedCommentService.getByPost(storyId, 'story', true);
       // Supabase 댓글 데이터를 Comment 컴포넌트 형식으로 변환
       const transformedComments = (updatedComments || []).map(comment => ({
         id: comment.id,
@@ -668,10 +676,12 @@ const StoryDetail: React.FC = () => {
         content: comment.content,
         createdAt: comment.created_at,
         isGuest: comment.is_guest,
+        authorId: comment.author_id,
+        authorAvatarUrl: comment.author_avatar_url || comment.author_profile?.avatar_url,
+        authorLevel: comment.authorLevel || comment.author_level?.level || 1,
         guestPassword: comment.guest_password,
         authorVerified: comment.author_verified,
         parentId: comment.parent_id,
-        authorId: comment.author_id,
         replies: comment.replies ? comment.replies.map(reply => ({
           id: reply.id,
           author: reply.author_name,
@@ -682,6 +692,8 @@ const StoryDetail: React.FC = () => {
           authorVerified: reply.author_verified,
           parentId: reply.parent_id,
           authorId: reply.author_id,
+          authorAvatarUrl: reply.author_avatar_url || reply.author_profile?.avatar_url,
+          authorLevel: reply.authorLevel || reply.author_level?.level || 1
         })) : []
       }));
       setStoryComments(transformedComments);
@@ -708,8 +720,8 @@ const StoryDetail: React.FC = () => {
     try {
       await commentService.update(commentId, newContent, password);
       
-      // 댓글 목록 새로고침
-      const updatedComments = await optimizedCommentService.getByPost(storyId, 'story');
+      // 댓글 목록 새로고침 (forceRefresh로 최신 데이터 보장)
+      const updatedComments = await optimizedCommentService.getByPost(storyId, 'story', true);
       // Supabase 댓글 데이터를 Comment 컴포넌트 형식으로 변환
       const transformedComments = (updatedComments || []).map(comment => ({
         id: comment.id,
@@ -717,10 +729,12 @@ const StoryDetail: React.FC = () => {
         content: comment.content,
         createdAt: comment.created_at,
         isGuest: comment.is_guest,
+        authorId: comment.author_id,
+        authorAvatarUrl: comment.author_avatar_url || comment.author_profile?.avatar_url,
+        authorLevel: comment.authorLevel || comment.author_level?.level || 1,
         guestPassword: comment.guest_password,
         authorVerified: comment.author_verified,
         parentId: comment.parent_id,
-        authorId: comment.author_id,
         replies: comment.replies ? comment.replies.map(reply => ({
           id: reply.id,
           author: reply.author_name,
@@ -731,6 +745,8 @@ const StoryDetail: React.FC = () => {
           authorVerified: reply.author_verified,
           parentId: reply.parent_id,
           authorId: reply.author_id,
+          authorAvatarUrl: reply.author_avatar_url || reply.author_profile?.avatar_url,
+          authorLevel: reply.authorLevel || reply.author_level?.level || 1
         })) : []
       }));
       setStoryComments(transformedComments);
@@ -755,8 +771,8 @@ const StoryDetail: React.FC = () => {
     try {
       await commentService.delete(commentId, password);
       
-      // 댓글 목록 새로고침
-      const updatedComments = await optimizedCommentService.getByPost(storyId, 'story');
+      // 댓글 목록 새로고침 (forceRefresh로 최신 데이터 보장)
+      const updatedComments = await optimizedCommentService.getByPost(storyId, 'story', true);
       // Supabase 댓글 데이터를 Comment 컴포넌트 형식으로 변환
       const transformedComments = (updatedComments || []).map(comment => ({
         id: comment.id,
@@ -764,10 +780,12 @@ const StoryDetail: React.FC = () => {
         content: comment.content,
         createdAt: comment.created_at,
         isGuest: comment.is_guest,
+        authorId: comment.author_id,
+        authorAvatarUrl: comment.author_avatar_url || comment.author_profile?.avatar_url,
+        authorLevel: comment.authorLevel || comment.author_level?.level || 1,
         guestPassword: comment.guest_password,
         authorVerified: comment.author_verified,
         parentId: comment.parent_id,
-        authorId: comment.author_id,
         replies: comment.replies ? comment.replies.map(reply => ({
           id: reply.id,
           author: reply.author_name,
@@ -778,6 +796,8 @@ const StoryDetail: React.FC = () => {
           authorVerified: reply.author_verified,
           parentId: reply.parent_id,
           authorId: reply.author_id,
+          authorAvatarUrl: reply.author_avatar_url || reply.author_profile?.avatar_url,
+          authorLevel: reply.authorLevel || reply.author_level?.level || 1
         })) : []
       }));
       setStoryComments(transformedComments);

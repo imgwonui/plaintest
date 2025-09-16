@@ -205,6 +205,9 @@ const LoungeDetail: React.FC = () => {
             guestPassword: comment.guest_password,
             authorVerified: comment.author_verified,
             parentId: comment.parent_id,
+            authorId: comment.author_id,
+            authorAvatarUrl: comment.author_avatar_url || comment.author_profile?.avatar_url,
+            authorLevel: comment.authorLevel || comment.author_level?.level || 1,
             replies: comment.replies?.map((reply: any) => ({
               ...reply,
               author: reply.author_name,
@@ -212,7 +215,10 @@ const LoungeDetail: React.FC = () => {
               isGuest: reply.is_guest,
               guestPassword: reply.guest_password,
               authorVerified: reply.author_verified,
-              parentId: reply.parent_id
+              parentId: reply.parent_id,
+              authorId: reply.author_id,
+              authorAvatarUrl: reply.author_avatar_url || reply.author_profile?.avatar_url,
+              authorLevel: reply.authorLevel || reply.author_level?.level || 1
             })) || []
           })) || [];
           
@@ -532,106 +538,26 @@ const LoungeDetail: React.FC = () => {
 
   const handleCommentSubmit = async (content: string, author?: string, password?: string) => {
     setIsSubmittingComment(true);
-    
+
     try {
-      // 실제 댓글 생성 - Supabase에 저장
-      const newComment = await commentService.create({
+      // 댓글 생성 - optimizedCommentService 사용으로 캐시 자동 무효화
+      const newComment = await optimizedCommentService.create({
         post_id: postId,
         post_type: 'lounge' as const,
         content,
         author_name: user ? user.name : (author || "익명"),
+        author_id: user?.id || null,
         is_guest: !user,
-        guest_password: password // 실제로는 해시화해서 저장
+        guest_password: password,
+        author_verified: user?.isVerified || false
       });
-      
-      // 댓글 목록 강제 새로고침 (캐시 무시)
-      console.log('📝 댓글 작성 완료, 강력한 댓글 목록 새로고침 시작...');
-      console.log('📝 새로 생성된 댓글:', newComment);
-      
-      // 1. 모든 관련 캐시 완전 무효화 (더 광범위하게)
-      if (typeof window !== 'undefined') {
-        // LocalStorage 캐시 무효화
-        const localKeys = [];
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key && (key.includes('comment') || key.includes('lounge') || key.includes(`post_${postId}`) || key.includes('cache'))) {
-            localKeys.push(key);
-          }
-        }
-        localKeys.forEach(key => {
-          localStorage.removeItem(key);
-          console.log(`💥 LocalStorage 캐시 삭제: ${key}`);
-        });
-        
-        // SessionStorage 캐시 무효화
-        const sessionKeys = [];
-        for (let i = 0; i < sessionStorage.length; i++) {
-          const key = sessionStorage.key(i);
-          if (key && (key.includes('comment') || key.includes('lounge') || key.includes(`post_${postId}`) || key.includes('cache'))) {
-            sessionKeys.push(key);
-          }
-        }
-        sessionKeys.forEach(key => {
-          sessionStorage.removeItem(key);
-          console.log(`💥 SessionStorage 캐시 삭제: ${key}`);
-        });
-      }
-      
-      // 2. CacheService 캐시도 무효화
-      try {
-        cacheService.deleteByPattern('comment:*');
-        cacheService.deleteByPattern(`lounge:${postId}:*`);
-        cacheService.deleteByPattern('optimized_comment:*');
-        console.log('💥 CacheService 캐시 무효화 완료');
-      } catch (cacheError) {
-        console.warn('⚠️ CacheService 캐시 무효화 중 오류:', cacheError);
-      }
-      
-      // 3. 여러 번의 새로고침 시도 (확실하게)
-      let refreshAttempts = 0;
-      const maxAttempts = 3;
-      let updatedComments = null;
-      
-      while (refreshAttempts < maxAttempts && !updatedComments) {
-        refreshAttempts++;
-        console.log(`🔄 댓글 새로고침 시도 ${refreshAttempts}/${maxAttempts}`);
-        
-        // 각 시도마다 다른 딜레이
-        await new Promise(resolve => setTimeout(resolve, refreshAttempts * 500));
-        
-        try {
-          // 기본 서비스와 최적화된 서비스 둘 다 시도
-          updatedComments = await commentService.getByPost(postId, 'lounge', { forceRefresh: true });
-          
-          if (!updatedComments || updatedComments.length === 0) {
-            console.warn(`⚠️ 시도 ${refreshAttempts}: 댓글 목록이 비어있음, optimized 서비스로 재시도`);
-            updatedComments = await optimizedCommentService.getByPost(postId, 'lounge');
-          }
-          
-          console.log(`✅ 시도 ${refreshAttempts}: 댓글 ${updatedComments?.length || 0}개 로드됨`);
-          
-          // 새로 생성된 댓글이 포함되었는지 확인
-          if (updatedComments && newComment?.id) {
-            const foundNewComment = updatedComments.find(c => c.id === newComment.id);
-            if (foundNewComment) {
-              console.log('✅ 새로 생성된 댓글이 목록에 포함됨:', foundNewComment);
-              break;
-            } else {
-              console.warn(`⚠️ 새 댓글(ID: ${newComment.id})이 목록에 없음, 재시도 필요`);
-              if (refreshAttempts < maxAttempts) {
-                updatedComments = null; // 재시도를 위해 null로 설정
-              }
-            }
-          }
-        } catch (refreshError) {
-          console.error(`❌ 댓글 새로고침 시도 ${refreshAttempts} 실패:`, refreshError);
-          if (refreshAttempts === maxAttempts) {
-            throw refreshError; // 마지막 시도에서 실패하면 에러 throw
-          }
-        }
-      }
-      
-      // 4. 댓글 데이터를 컴포넌트 형식으로 변환
+
+      console.log('📝 댓글 작성 완료, 댓글 목록 새로고침...');
+
+      // 댓글 목록 새로고침 - forceRefresh로 캐시 무시하고 최신 데이터 가져오기
+      const updatedComments = await optimizedCommentService.getByPost(postId, 'lounge', true);
+
+      // 댓글 데이터를 컴포넌트 형식으로 변환
       if (updatedComments) {
         const transformedComments = updatedComments.map((comment: any) => ({
           ...comment,
@@ -641,6 +567,9 @@ const LoungeDetail: React.FC = () => {
           guestPassword: comment.guest_password,
           authorVerified: comment.author_verified,
           parentId: comment.parent_id,
+          authorId: comment.author_id,
+          authorAvatarUrl: comment.author_avatar_url || comment.author_profile?.avatar_url,
+          authorLevel: comment.authorLevel || comment.author_level?.level || 1,
           replies: comment.replies?.map((reply: any) => ({
             ...reply,
             author: reply.author_name,
@@ -648,7 +577,10 @@ const LoungeDetail: React.FC = () => {
             isGuest: reply.is_guest,
             guestPassword: reply.guest_password,
             authorVerified: reply.author_verified,
-            parentId: reply.parent_id
+            parentId: reply.parent_id,
+            authorId: reply.author_id,
+            authorAvatarUrl: reply.author_avatar_url || reply.author_profile?.avatar_url,
+            authorLevel: reply.authorLevel || reply.author_level?.level || 1
           })) || []
         }));
         
@@ -698,21 +630,23 @@ const LoungeDetail: React.FC = () => {
 
   const handleCommentReply = async (parentId: number, content: string, author?: string, password?: string) => {
     setIsSubmittingComment(true);
-    
+
     try {
-      // 대댓글 생성 - Supabase에 저장
-      const newReply = await commentService.create({
+      // 대댓글 생성 - optimizedCommentService 사용으로 캐시 자동 무효화
+      const newReply = await optimizedCommentService.create({
         post_id: postId,
         post_type: 'lounge' as const,
         content,
         author_name: user ? user.name : (author || "익명"),
+        author_id: user?.id || null,
         is_guest: !user,
         guest_password: password,
+        author_verified: user?.isVerified || false,
         parent_id: parentId // 부모 댓글 ID
       });
-      
-      // 댓글 목록 새로고침
-      const updatedComments = await optimizedCommentService.getByPost(postId, 'lounge');
+
+      // 댓글 목록 새로고침 (forceRefresh로 최신 데이터 보장)
+      const updatedComments = await optimizedCommentService.getByPost(postId, 'lounge', true);
       
       // 댓글 데이터를 컴포넌트 형식으로 변환
       const transformedComments = updatedComments?.map((comment: any) => ({
@@ -723,6 +657,8 @@ const LoungeDetail: React.FC = () => {
         guestPassword: comment.guest_password,
         authorVerified: comment.author_verified,
         parentId: comment.parent_id,
+        authorId: comment.author_id,
+        authorAvatarUrl: comment.author_avatar_url,
         replies: comment.replies?.map((reply: any) => ({
           ...reply,
           author: reply.author_name,
@@ -730,7 +666,9 @@ const LoungeDetail: React.FC = () => {
           isGuest: reply.is_guest,
           guestPassword: reply.guest_password,
           authorVerified: reply.author_verified,
-          parentId: reply.parent_id
+          parentId: reply.parent_id,
+          authorId: reply.author_id,
+          authorAvatarUrl: reply.author_avatar_url
         })) || []
       })) || [];
       
@@ -759,7 +697,7 @@ const LoungeDetail: React.FC = () => {
       const updatedComment = await commentService.update(commentId, newContent, password);
       
       // 댓글 목록 새로고침
-      const updatedComments = await optimizedCommentService.getByPost(postId, 'lounge');
+      const updatedComments = await optimizedCommentService.getByPost(postId, 'lounge', true);
       
       // 댓글 데이터를 컴포넌트 형식으로 변환
       const transformedComments = updatedComments?.map((comment: any) => ({
@@ -770,6 +708,8 @@ const LoungeDetail: React.FC = () => {
         guestPassword: comment.guest_password,
         authorVerified: comment.author_verified,
         parentId: comment.parent_id,
+        authorId: comment.author_id,
+        authorAvatarUrl: comment.author_avatar_url,
         replies: comment.replies?.map((reply: any) => ({
           ...reply,
           author: reply.author_name,
@@ -777,7 +717,9 @@ const LoungeDetail: React.FC = () => {
           isGuest: reply.is_guest,
           guestPassword: reply.guest_password,
           authorVerified: reply.author_verified,
-          parentId: reply.parent_id
+          parentId: reply.parent_id,
+          authorId: reply.author_id,
+          authorAvatarUrl: reply.author_avatar_url
         })) || []
       })) || [];
       
@@ -804,7 +746,7 @@ const LoungeDetail: React.FC = () => {
       await commentService.delete(commentId, password);
       
       // 댓글 목록 새로고침
-      const updatedComments = await optimizedCommentService.getByPost(postId, 'lounge');
+      const updatedComments = await optimizedCommentService.getByPost(postId, 'lounge', true);
       
       // 댓글 데이터를 컴포넌트 형식으로 변환
       const transformedComments = updatedComments?.map((comment: any) => ({
@@ -815,6 +757,8 @@ const LoungeDetail: React.FC = () => {
         guestPassword: comment.guest_password,
         authorVerified: comment.author_verified,
         parentId: comment.parent_id,
+        authorId: comment.author_id,
+        authorAvatarUrl: comment.author_avatar_url,
         replies: comment.replies?.map((reply: any) => ({
           ...reply,
           author: reply.author_name,
@@ -822,7 +766,9 @@ const LoungeDetail: React.FC = () => {
           isGuest: reply.is_guest,
           guestPassword: reply.guest_password,
           authorVerified: reply.author_verified,
-          parentId: reply.parent_id
+          parentId: reply.parent_id,
+          authorId: reply.author_id,
+          authorAvatarUrl: reply.author_avatar_url
         })) || []
       })) || [];
       

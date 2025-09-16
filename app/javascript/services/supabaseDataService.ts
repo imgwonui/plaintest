@@ -189,6 +189,10 @@ export const userService = {
     name: string;
     provider: 'kakao' | 'google' | 'admin';
     avatar?: string;
+    is_admin?: boolean;
+    is_verified?: boolean;
+    avatar_url?: string;
+    bio?: string;
   }) {
     try {
       console.log('사용자 생성 시도:', userData);
@@ -200,10 +204,10 @@ export const userService = {
           email: userData.email,
           name: userData.name,
           provider: userData.provider,
-          avatar_url: userData.avatar || null,
-          is_admin: false,
-          is_verified: false,
-          bio: null,
+          avatar_url: userData.avatar_url || userData.avatar || null,
+          is_admin: userData.is_admin ?? false,
+          is_verified: userData.is_verified ?? false,
+          bio: userData.bio || null,
           email_notifications: true,
           push_notifications: true,
           weekly_digest: true,
@@ -312,6 +316,48 @@ export const userService = {
         totalPages: 0,
         currentPage: page
       };
+    }
+  },
+
+  // 사용자가 작성한 Story 조회
+  async getStoriesByAuthor(userId: string) {
+    try {
+      const { data, error } = await supabase
+        .from('stories')
+        .select('*')
+        .eq('author_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('getStoriesByAuthor 에러:', error);
+        throw error;
+      }
+
+      return { stories: data || [] };
+    } catch (error) {
+      console.error('getStoriesByAuthor 에러:', error);
+      return { stories: [] };
+    }
+  },
+
+  // 사용자가 작성한 Lounge 글 조회
+  async getLoungePostsByAuthor(userId: string) {
+    try {
+      const { data, error } = await supabase
+        .from('lounge_posts')
+        .select('*')
+        .eq('author_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('getLoungePostsByAuthor 에러:', error);
+        throw error;
+      }
+
+      return { posts: data || [] };
+    } catch (error) {
+      console.error('getLoungePostsByAuthor 에러:', error);
+      return { posts: [] };
     }
   },
 
@@ -640,11 +686,18 @@ export const loungeService = {
   // 조회수 증가
   async incrementViewCount(postId: number) {
     try {
+      // 현재 조회수를 조회하고 1 증가
+      const { data: currentPost } = await supabase
+        .from('lounge_posts')
+        .select('view_count')
+        .eq('id', postId)
+        .single();
+
+      const newViewCount = (currentPost?.view_count || 0) + 1;
+
       const { error } = await supabase
         .from('lounge_posts')
-        .update({ 
-          view_count: supabase.raw('view_count + 1')
-        })
+        .update({ view_count: newViewCount })
         .eq('id', postId);
 
       if (error) {
@@ -979,11 +1032,18 @@ export const storyService = {
   // 조회수 증가
   async incrementViewCount(storyId: number) {
     try {
+      // 현재 조회수를 조회하고 1 증가
+      const { data: currentStory } = await supabase
+        .from('stories')
+        .select('view_count')
+        .eq('id', storyId)
+        .single();
+
+      const newViewCount = (currentStory?.view_count || 0) + 1;
+
       const { error } = await supabase
         .from('stories')
-        .update({ 
-          view_count: supabase.raw('view_count + 1')
-        })
+        .update({ view_count: newViewCount })
         .eq('id', storyId);
 
       if (error) {
@@ -1044,10 +1104,19 @@ export const storyService = {
       }
       
       console.log('스토리 생성 성공:', data);
-      
+
       // 사용자 활동 추가
       await this.addUserActivity(storyData.author_id, 'post_created');
-      
+
+      // Story 작성 시 사용자 레벨 갱신
+      try {
+        const { trackDatabaseUserActivity } = await import('../services/databaseUserLevelService');
+        await trackDatabaseUserActivity(storyData.author_id);
+        console.log('✅ Story 작성 후 사용자 레벨 갱신 완료');
+      } catch (levelError) {
+        console.warn('⚠️ Story 작성 후 레벨 갱신 실패:', levelError);
+      }
+
       return data;
     } catch (error) {
       console.error('스토리 생성 실패:', error);
@@ -1300,29 +1369,99 @@ export const storyService = {
 // ===========================================================================
 
 export const commentService = {
-  // 포스트별 댓글 조회 (간단한 방식)
+  // 포스트별 댓글 조회 (작성자 프로필 및 레벨 포함)
   async getByPost(postId: number, postType: 'story' | 'lounge') {
     try {
       console.log(`📝 댓글 조회 시작: ${postType} ${postId}`);
-      
-      // 단순히 모든 댓글 조회 (외래키 관계 사용하지 않음)
+
+      // 댓글과 함께 작성자 프로필 정보(avatar_url 포함) 및 레벨 조회
       const { data: allComments, error } = await supabase
         .from('comments')
-        .select('*')
+        .select(`
+          *,
+          author_profile:users!comments_author_id_fkey(
+            id,
+            name,
+            avatar_url,
+            provider,
+            is_verified
+          ),
+          author_level:user_levels!comments_author_id_fkey(
+            level,
+            current_exp
+          )
+        `)
         .eq('post_id', postId)
         .eq('post_type', postType)
         .order('created_at', { ascending: true });
 
       if (error) {
         console.error('댓글 조회 오류:', error);
-        throw error;
+        // 외래키 오류 시 단순 조회로 폴백
+        const { data: fallbackComments, error: fallbackError } = await supabase
+          .from('comments')
+          .select('*')
+          .eq('post_id', postId)
+          .eq('post_type', postType)
+          .order('created_at', { ascending: true });
+
+        if (fallbackError) throw fallbackError;
+
+        // 작성자 정보 및 레벨을 별도로 조회
+        const enrichedComments = await Promise.all((fallbackComments || []).map(async (comment) => {
+          if (comment.author_id && !comment.is_guest) {
+            // 사용자 프로필 조회
+            const { data: authorProfile } = await supabase
+              .from('users')
+              .select('id, name, avatar_url, provider, is_verified')
+              .eq('id', comment.author_id)
+              .single();
+
+            // 사용자 레벨 조회
+            const { data: authorLevel } = await supabase
+              .from('user_levels')
+              .select('level, current_exp')
+              .eq('user_id', comment.author_id)
+              .single();
+
+            return {
+              ...comment,
+              author_profile: authorProfile,
+              author_level: authorLevel,
+              author_avatar_url: authorProfile?.avatar_url || null,
+              authorLevel: authorLevel?.level || 1
+            };
+          }
+          return {
+            ...comment,
+            author_avatar_url: null,
+            authorLevel: 1
+          };
+        }));
+
+        const parentComments = enrichedComments.filter(comment => !comment.parent_id);
+        const replyComments = enrichedComments.filter(comment => comment.parent_id);
+
+        const commentsWithReplies = parentComments.map(parent => ({
+          ...parent,
+          replies: replyComments.filter(reply => reply.parent_id === parent.id)
+        }));
+
+        return commentsWithReplies;
       }
 
       console.log(`✅ ${allComments?.length || 0}개 댓글 조회 완료`);
 
+      // 작성자 avatar_url과 level을 댓글 객체에 추가
+      const processedComments = (allComments || []).map(comment => ({
+        ...comment,
+        author_avatar_url: comment.author_profile?.avatar_url || null,
+        authorLevel: comment.author_level?.level || 1
+      }));
+
       // 부모 댓글과 답글로 분류
-      const parentComments = (allComments || []).filter(comment => !comment.parent_id);
-      const replyComments = (allComments || []).filter(comment => comment.parent_id);
+      const parentComments = processedComments.filter(comment => !comment.parent_id);
+      const replyComments = processedComments.filter(comment => comment.parent_id);
 
       // 각 부모 댓글에 답글 추가
       const commentsWithReplies = parentComments.map(parent => ({
@@ -1361,6 +1500,15 @@ export const commentService = {
       // 사용자 활동 추가 (게스트가 아닌 경우)
       if (commentData.author_id && !commentData.is_guest) {
         await storyService.addUserActivity(commentData.author_id, 'comment_created');
+
+        // 댓글 작성 시 사용자 레벨 갱신
+        try {
+          const { trackDatabaseUserActivity } = await import('../services/databaseUserLevelService');
+          await trackDatabaseUserActivity(commentData.author_id);
+          console.log('✅ 댓글 작성 후 사용자 레벨 갱신 완료');
+        } catch (levelError) {
+          console.warn('⚠️ 댓글 작성 후 레벨 갱신 실패:', levelError);
+        }
       }
       
       return data;
@@ -1553,18 +1701,24 @@ export const interactionService = {
 
         if (deleteError) throw deleteError;
         
-        // 카운트 감소
+        // 현재 좋아요 수를 조회하고 1 감소
+        const { data: currentPost } = await supabase
+          .from(table)
+          .select('like_count')
+          .eq('id', postId)
+          .single();
+
+        const newLikeCount = Math.max(0, (currentPost?.like_count || 0) - 1);
+
         const { error: updateError } = await supabase
           .from(table)
-          .update({
-            like_count: supabase.raw('like_count - 1')
-          })
+          .update({ like_count: newLikeCount })
           .eq('id', postId);
 
         if (updateError) throw updateError;
         
         console.log('✅ 좋아요 해제 완료');
-        return { liked: false };
+        return { action: 'removed' };
       } else {
         // 좋아요 추가
         const { error: insertError } = await supabase
@@ -1578,12 +1732,18 @@ export const interactionService = {
 
         if (insertError) throw insertError;
         
-        // 카운트 증가
+        // 현재 좋아요 수를 조회하고 1 증가
+        const { data: currentPost } = await supabase
+          .from(table)
+          .select('like_count')
+          .eq('id', postId)
+          .single();
+
+        const newLikeCount = (currentPost?.like_count || 0) + 1;
+
         const { error: updateError } = await supabase
           .from(table)
-          .update({
-            like_count: supabase.raw('like_count + 1')
-          })
+          .update({ like_count: newLikeCount })
           .eq('id', postId);
 
         if (updateError) throw updateError;
@@ -1610,7 +1770,7 @@ export const interactionService = {
           }
         }
         
-        return { liked: true };
+        return { action: 'added' };
       }
     } catch (error) {
       console.error('좋아요 토글 실패:', error);
@@ -1647,18 +1807,24 @@ export const interactionService = {
 
         if (deleteError) throw deleteError;
         
-        // 카운트 감소
+        // 현재 스크랩 수를 조회하고 1 감소
+        const { data: currentPost } = await supabase
+          .from(table)
+          .select('scrap_count')
+          .eq('id', postId)
+          .single();
+
+        const newScrapCount = Math.max(0, (currentPost?.scrap_count || 0) - 1);
+
         const { error: updateError } = await supabase
           .from(table)
-          .update({
-            scrap_count: supabase.raw('scrap_count - 1')
-          })
+          .update({ scrap_count: newScrapCount })
           .eq('id', postId);
 
         if (updateError) throw updateError;
         
         console.log('✅ 스크랩 해제 완료');
-        return { scrapped: false };
+        return { action: 'removed' };
       } else {
         // 스크랩 추가
         const { error: insertError } = await supabase
@@ -1672,12 +1838,18 @@ export const interactionService = {
 
         if (insertError) throw insertError;
         
-        // 카운트 증가
+        // 현재 스크랩 수를 조회하고 1 증가
+        const { data: currentPost } = await supabase
+          .from(table)
+          .select('scrap_count')
+          .eq('id', postId)
+          .single();
+
+        const newScrapCount = (currentPost?.scrap_count || 0) + 1;
+
         const { error: updateError } = await supabase
           .from(table)
-          .update({
-            scrap_count: supabase.raw('scrap_count + 1')
-          })
+          .update({ scrap_count: newScrapCount })
           .eq('id', postId);
 
         if (updateError) throw updateError;
@@ -1693,9 +1865,18 @@ export const interactionService = {
           
         if (post?.author_id && post.author_id !== userId) {
           await storyService.addUserActivity(post.author_id, 'bookmarked');
+
+          // 북마크 받을 때 작성자 레벨 갱신
+          try {
+            const { trackDatabaseUserActivity } = await import('../services/databaseUserLevelService');
+            await trackDatabaseUserActivity(post.author_id);
+            console.log('✅ 북마크 받은 후 작성자 레벨 갱신 완료');
+          } catch (levelError) {
+            console.warn('⚠️ 북마크 받은 후 레벨 갱신 실패:', levelError);
+          }
         }
         
-        return { scrapped: true };
+        return { action: 'added' };
       }
     } catch (error) {
       console.error('스크랩 토글 실패:', error);
@@ -1894,10 +2075,28 @@ export const interactionService = {
         .eq('post_type', postType);
 
       if (error) throw error;
-      
+
       return data?.length || 0;
     } catch (error) {
       console.error('좋아요 수 조회 실패:', error);
+      return 0;
+    }
+  },
+
+  // 북마크 수 조회
+  async getBookmarkCount(postId: number, postType: 'story' | 'lounge') {
+    try {
+      const { data, error } = await supabase
+        .from('scraps')
+        .select('id', { count: 'exact' })
+        .eq('post_id', postId)
+        .eq('post_type', postType);
+
+      if (error) throw error;
+
+      return data?.length || 0;
+    } catch (error) {
+      console.error('북마크 수 조회 실패:', error);
       return 0;
     }
   },
